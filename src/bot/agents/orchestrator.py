@@ -243,6 +243,44 @@ Remember: You're Hani's trusted assistant. Be helpful, accurate, and efficient."
             reasoning=f"Best match: {best[0].value} (score: {best[1]:.2f})",
         )
 
+    def _get_chat_response(self, message: str, context: ConversationContext) -> str:
+        """Generate a direct chat response without tools.
+
+        Args:
+            message: User message.
+            context: Conversation context.
+
+        Returns:
+            Chat response string.
+        """
+        system = f"""You are Hani's friendly personal AI assistant.
+
+Today's date: {datetime.now().strftime("%Y-%m-%d %A")}
+
+You're having a casual conversation. Respond naturally and helpfully.
+Keep responses concise but warm. You can help with:
+- Calendar (check schedule, find availability)
+- Email (search, create drafts)
+- GitHub (PRs, issues, code search)
+- General questions about documents and people
+
+If asked what you can do, briefly explain your capabilities.
+For greetings, respond warmly and offer to help."""
+
+        messages = self._build_messages(context, message)
+
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=1024,
+                system=system,
+                messages=messages,
+            )
+            return self._extract_text(response) or "Hi! How can I help you today?"
+        except Exception as e:
+            logger.error(f"Chat response error: {e}")
+            return "Hi! I'm here to help. What can I do for you?"
+
     def run(
         self,
         message: str,
@@ -265,8 +303,18 @@ Remember: You're Hani's trusted assistant. Be helpful, accurate, and efficient."
         plan = self._plan_task(message, context)
         logger.info(f"Task plan: {plan.reasoning}")
 
-        # Handle conversational messages directly
-        if plan.is_conversational or not plan.needs_specialist:
+        # Handle conversational messages directly with simple chat
+        if plan.is_conversational:
+            response_text = self._get_chat_response(message, context)
+            return AgentResult(
+                response=response_text,
+                agent_type=self.AGENT_TYPE,
+                iterations=1,
+                metadata={"conversational": True},
+            )
+
+        # For non-conversational without specialists, use base run
+        if not plan.needs_specialist:
             return super().run(message, context, max_iterations)
 
         # Route to specialist(s)
@@ -308,11 +356,31 @@ Remember: You're Hani's trusted assistant. Be helpful, accurate, and efficient."
         plan = self._plan_task(message, context)
         logger.info(f"Task plan: {plan.reasoning}")
 
-        # Handle conversational messages directly
-        if plan.is_conversational or not plan.needs_specialist:
+        # Handle conversational messages directly with simple chat
+        if plan.is_conversational:
             yield AgentStreamEvent(
                 event_type="thinking",
-                data="Processing your message...",
+                data="Processing...",
+                agent_type=self.AGENT_TYPE,
+            )
+            response_text = self._get_chat_response(message, context)
+            yield AgentStreamEvent(
+                event_type="done",
+                data=response_text,
+                agent_type=self.AGENT_TYPE,
+            )
+            return AgentResult(
+                response=response_text,
+                agent_type=self.AGENT_TYPE,
+                iterations=1,
+                metadata={"conversational": True},
+            )
+
+        # For non-conversational without specialists, use base streaming
+        if not plan.needs_specialist:
+            yield AgentStreamEvent(
+                event_type="thinking",
+                data="Processing your request...",
                 agent_type=self.AGENT_TYPE,
             )
             return (yield from super().run_streaming(message, context, max_iterations))
