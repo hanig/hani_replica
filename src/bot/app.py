@@ -1,15 +1,23 @@
 """Main Slack bot application using Socket Mode."""
 
+import atexit
 import logging
 from typing import Callable
 
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from ..config import SLACK_APP_TOKEN, SLACK_BOT_TOKEN
+from ..config import SLACK_APP_TOKEN, SLACK_BOT_TOKEN, BOT_MODE, ENABLE_STREAMING
 from .conversation import ConversationManager
 from .event_handlers import register_event_handlers
+from .feedback_loop import FeedbackLoop
 from .formatters import format_error_message
+from .heartbeat import HeartbeatManager
+from .proactive_settings import ProactiveSettingsStore
+from .user_memory import UserMemory
 
 logger = logging.getLogger(__name__)
 
@@ -17,18 +25,28 @@ logger = logging.getLogger(__name__)
 def create_bot_app(
     bot_token: str | None = None,
     app_token: str | None = None,
-) -> tuple[App, SocketModeHandler]:
+    enable_persistence: bool = True,
+    enable_proactive: bool = True,
+    mode: str | None = None,
+    enable_streaming: bool | None = None,
+) -> tuple[App, SocketModeHandler, BackgroundScheduler | None]:
     """Create and configure the Slack bot application.
 
     Args:
         bot_token: Slack bot token. Defaults to environment variable.
         app_token: Slack app token for Socket Mode. Defaults to environment variable.
+        enable_persistence: Whether to enable persistent memory (default True).
+        enable_proactive: Whether to enable proactive features (default True).
+        mode: Bot mode - "intent" or "agent". Defaults to BOT_MODE from config.
+        enable_streaming: Whether to enable streaming responses. Defaults to ENABLE_STREAMING.
 
     Returns:
-        Tuple of (App, SocketModeHandler).
+        Tuple of (App, SocketModeHandler, BackgroundScheduler or None).
     """
     bot_token = bot_token or SLACK_BOT_TOKEN
     app_token = app_token or SLACK_APP_TOKEN
+    bot_mode = mode or BOT_MODE
+    streaming = enable_streaming if enable_streaming is not None else ENABLE_STREAMING
 
     if not bot_token:
         raise ValueError("SLACK_BOT_TOKEN is required")
@@ -38,11 +56,32 @@ def create_bot_app(
     # Create the app
     app = App(token=bot_token)
 
-    # Initialize conversation manager
-    conversation_manager = ConversationManager()
+    # Initialize conversation manager with persistence
+    conversation_manager = ConversationManager(persist=enable_persistence)
 
-    # Register event handlers
-    register_event_handlers(app, conversation_manager)
+    # Initialize memory systems
+    user_memory = UserMemory() if enable_persistence else None
+    feedback_loop = FeedbackLoop() if enable_persistence else None
+
+    if enable_persistence:
+        logger.info("Persistent memory enabled")
+
+        # Register shutdown handler to persist conversations
+        def on_shutdown():
+            logger.info("Persisting conversations on shutdown...")
+            conversation_manager.persist_all()
+
+        atexit.register(on_shutdown)
+
+    # Register event handlers with memory systems
+    register_event_handlers(
+        app,
+        conversation_manager,
+        user_memory=user_memory,
+        feedback_loop=feedback_loop,
+        mode=bot_mode,
+        enable_streaming=streaming,
+    )
 
     # Add global error handler
     @app.error
@@ -53,32 +92,153 @@ def create_bot_app(
     # Create Socket Mode handler
     handler = SocketModeHandler(app, app_token)
 
+    # Set up proactive features
+    scheduler = None
+    if enable_proactive:
+        scheduler = _setup_proactive_scheduler(app.client, enable_persistence)
+        logger.info("Proactive features enabled")
+
     logger.info("Slack bot app created successfully")
-    return app, handler
+    return app, handler, scheduler
+
+
+def _setup_proactive_scheduler(
+    slack_client,
+    enable_persistence: bool = True,
+) -> BackgroundScheduler:
+    """Set up the background scheduler for proactive features.
+
+    Args:
+        slack_client: Slack WebClient for sending messages.
+        enable_persistence: Whether persistence is enabled.
+
+    Returns:
+        Configured BackgroundScheduler instance.
+    """
+    # Initialize proactive settings store
+    settings_store = ProactiveSettingsStore() if enable_persistence else None
+
+    # Initialize heartbeat manager
+    heartbeat = HeartbeatManager(
+        slack_client=slack_client,
+        settings_store=settings_store,
+    )
+
+    # Create scheduler
+    scheduler = BackgroundScheduler(
+        job_defaults={
+            "coalesce": True,  # Combine missed runs
+            "max_instances": 1,  # Only one instance at a time
+            "misfire_grace_time": 60,  # Allow 60 seconds for misfires
+        }
+    )
+
+    # Add calendar reminder check job (every 5 minutes)
+    scheduler.add_job(
+        heartbeat.check_calendar_reminders,
+        IntervalTrigger(minutes=5),
+        id="calendar_reminders",
+        name="Check calendar reminders",
+        replace_existing=True,
+    )
+
+    # Add important email check job (every 10 minutes)
+    scheduler.add_job(
+        heartbeat.check_important_emails,
+        IntervalTrigger(minutes=10),
+        id="email_alerts",
+        name="Check important emails",
+        replace_existing=True,
+    )
+
+    # Add daily briefing job (7 AM on weekdays)
+    scheduler.add_job(
+        heartbeat.send_daily_briefings,
+        CronTrigger(hour=7, minute=0, day_of_week="mon-fri"),
+        id="daily_briefing",
+        name="Send daily briefings",
+        replace_existing=True,
+    )
+
+    # Add cleanup job (daily at 3 AM)
+    scheduler.add_job(
+        heartbeat.cleanup,
+        CronTrigger(hour=3, minute=0),
+        id="cleanup",
+        name="Clean up old notifications",
+        replace_existing=True,
+    )
+
+    logger.info("Proactive scheduler configured with 4 jobs")
+    return scheduler
 
 
 def run_bot(
     bot_token: str | None = None,
     app_token: str | None = None,
+    enable_persistence: bool = True,
+    enable_proactive: bool = True,
+    mode: str | None = None,
+    enable_streaming: bool | None = None,
 ) -> None:
     """Run the Slack bot.
 
     Args:
         bot_token: Slack bot token.
         app_token: Slack app token for Socket Mode.
+        enable_persistence: Whether to enable persistent memory.
+        enable_proactive: Whether to enable proactive features.
+        mode: Bot mode - "intent", "agent", or "multi_agent". Defaults to BOT_MODE from config.
+        enable_streaming: Whether to enable streaming responses.
     """
-    app, handler = create_bot_app(bot_token, app_token)
+    bot_mode = mode or BOT_MODE
+    streaming = enable_streaming if enable_streaming is not None else ENABLE_STREAMING
+
+    app, handler, scheduler = create_bot_app(
+        bot_token, app_token, enable_persistence, enable_proactive,
+        mode=bot_mode, enable_streaming=streaming
+    )
 
     logger.info("Starting Slack bot in Socket Mode...")
     print("Bot is running! Press Ctrl+C to stop.")
 
+    # Mode description
+    mode_descriptions = {
+        "intent": "legacy intent routing",
+        "agent": "single agent with tool calling",
+        "multi_agent": "orchestrator with specialist agents",
+    }
+    print(f"Mode: {bot_mode} ({mode_descriptions.get(bot_mode, 'unknown')})")
+
+    if bot_mode in ("agent", "multi_agent"):
+        print(f"Streaming: {'enabled' if streaming else 'disabled'}")
+    if enable_persistence:
+        print("Persistent memory is enabled - conversations will survive restarts.")
+    if enable_proactive and scheduler:
+        print("Proactive features are enabled:")
+        print("  - Calendar reminders (15 min before meetings)")
+        print("  - Important email alerts")
+        print("  - Daily briefings (7 AM weekdays)")
+
     try:
+        # Start the scheduler if enabled
+        if scheduler:
+            scheduler.start()
+            logger.info("Background scheduler started")
+
+        # Start the Slack handler
         handler.start()
+
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
     except Exception as e:
         logger.error(f"Bot error: {e}")
         raise
+    finally:
+        # Clean up scheduler
+        if scheduler and scheduler.running:
+            scheduler.shutdown(wait=False)
+            logger.info("Background scheduler stopped")
 
 
 class BotContext:
@@ -88,15 +248,27 @@ class BotContext:
         self,
         app: App,
         conversation_manager: ConversationManager,
+        user_memory: UserMemory | None = None,
+        feedback_loop: FeedbackLoop | None = None,
+        heartbeat_manager: HeartbeatManager | None = None,
+        proactive_settings: ProactiveSettingsStore | None = None,
     ):
         """Initialize bot context.
 
         Args:
             app: Slack App instance.
             conversation_manager: Conversation manager instance.
+            user_memory: Optional UserMemory instance.
+            feedback_loop: Optional FeedbackLoop instance.
+            heartbeat_manager: Optional HeartbeatManager instance.
+            proactive_settings: Optional ProactiveSettingsStore instance.
         """
         self.app = app
         self.conversations = conversation_manager
+        self.user_memory = user_memory
+        self.feedback_loop = feedback_loop
+        self.heartbeat = heartbeat_manager
+        self.proactive_settings = proactive_settings
 
         # Lazy-loaded components
         self._query_engine = None

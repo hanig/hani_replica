@@ -1,10 +1,16 @@
 """Tests for conversation management."""
 
+import tempfile
 import time
+from pathlib import Path
 
 import pytest
 
-from src.bot.conversation import ConversationContext, ConversationManager
+from src.bot.conversation import (
+    ConversationContext,
+    ConversationManager,
+    ConversationStore,
+)
 
 
 class TestConversationContext:
@@ -81,7 +87,7 @@ class TestConversationManager:
 
     def test_get_or_create(self):
         """Test getting or creating a conversation."""
-        manager = ConversationManager()
+        manager = ConversationManager(persist=False)
 
         context = manager.get_or_create("U1", "C1")
 
@@ -90,7 +96,7 @@ class TestConversationManager:
 
     def test_get_existing(self):
         """Test getting an existing conversation."""
-        manager = ConversationManager()
+        manager = ConversationManager(persist=False)
 
         ctx1 = manager.get_or_create("U1", "C1")
         ctx1.add_message("user", "Hello")
@@ -102,7 +108,7 @@ class TestConversationManager:
 
     def test_get_nonexistent(self):
         """Test getting a non-existent conversation."""
-        manager = ConversationManager()
+        manager = ConversationManager(persist=False)
 
         context = manager.get("U1", "C1")
 
@@ -110,7 +116,7 @@ class TestConversationManager:
 
     def test_delete(self):
         """Test deleting a conversation."""
-        manager = ConversationManager()
+        manager = ConversationManager(persist=False)
 
         manager.get_or_create("U1", "C1")
         deleted = manager.delete("U1", "C1")
@@ -120,7 +126,7 @@ class TestConversationManager:
 
     def test_delete_nonexistent(self):
         """Test deleting non-existent conversation."""
-        manager = ConversationManager()
+        manager = ConversationManager(persist=False)
 
         deleted = manager.delete("U1", "C1")
 
@@ -128,7 +134,7 @@ class TestConversationManager:
 
     def test_different_threads(self):
         """Test that different threads have separate contexts."""
-        manager = ConversationManager()
+        manager = ConversationManager(persist=False)
 
         ctx1 = manager.get_or_create("U1", "C1", "thread1")
         ctx2 = manager.get_or_create("U1", "C1", "thread2")
@@ -137,7 +143,7 @@ class TestConversationManager:
 
     def test_get_stats(self):
         """Test getting manager statistics."""
-        manager = ConversationManager()
+        manager = ConversationManager(persist=False)
 
         manager.get_or_create("U1", "C1")
         manager.get_or_create("U2", "C2")
@@ -145,3 +151,169 @@ class TestConversationManager:
         stats = manager.get_stats()
 
         assert stats["active_conversations"] == 2
+
+
+class TestConversationStore:
+    """Tests for ConversationStore persistence."""
+
+    @pytest.fixture
+    def temp_db(self):
+        """Create a temporary database file."""
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            yield Path(f.name)
+
+    def test_save_and_load(self, temp_db):
+        """Test saving and loading a conversation."""
+        store = ConversationStore(temp_db)
+
+        context = ConversationContext("U1", "C1", "thread1")
+        context.add_message("user", "Hello")
+        context.add_message("assistant", "Hi!")
+
+        store.save(context)
+
+        loaded = store.load(context.key)
+
+        assert loaded is not None
+        assert loaded.user_id == "U1"
+        assert loaded.channel_id == "C1"
+        assert len(loaded.history) == 2
+
+    def test_load_nonexistent(self, temp_db):
+        """Test loading a non-existent conversation."""
+        store = ConversationStore(temp_db)
+
+        loaded = store.load("nonexistent:key:here")
+
+        assert loaded is None
+
+    def test_save_update(self, temp_db):
+        """Test updating an existing conversation."""
+        store = ConversationStore(temp_db)
+
+        context = ConversationContext("U1", "C1")
+        context.add_message("user", "Hello")
+        store.save(context)
+
+        context.add_message("assistant", "Hi!")
+        store.save(context)
+
+        loaded = store.load(context.key)
+
+        assert len(loaded.history) == 2
+
+    def test_load_all(self, temp_db):
+        """Test loading all conversations."""
+        store = ConversationStore(temp_db)
+
+        ctx1 = ConversationContext("U1", "C1")
+        ctx2 = ConversationContext("U2", "C2")
+
+        store.save(ctx1)
+        store.save(ctx2)
+
+        all_convos = store.load_all()
+
+        assert len(all_convos) == 2
+
+    def test_load_for_user(self, temp_db):
+        """Test loading conversations for a specific user."""
+        store = ConversationStore(temp_db)
+
+        ctx1 = ConversationContext("U1", "C1")
+        ctx2 = ConversationContext("U1", "C2")
+        ctx3 = ConversationContext("U2", "C3")
+
+        store.save(ctx1)
+        store.save(ctx2)
+        store.save(ctx3)
+
+        user_convos = store.load_for_user("U1")
+
+        assert len(user_convos) == 2
+
+    def test_delete(self, temp_db):
+        """Test deleting a conversation."""
+        store = ConversationStore(temp_db)
+
+        context = ConversationContext("U1", "C1")
+        store.save(context)
+
+        deleted = store.delete(context.key)
+
+        assert deleted is True
+        assert store.load(context.key) is None
+
+    def test_get_stats(self, temp_db):
+        """Test getting store statistics."""
+        store = ConversationStore(temp_db)
+
+        ctx1 = ConversationContext("U1", "C1")
+        ctx2 = ConversationContext("U1", "C2")
+        ctx3 = ConversationContext("U2", "C3")
+
+        store.save(ctx1)
+        store.save(ctx2)
+        store.save(ctx3)
+
+        stats = store.get_stats()
+
+        assert stats["total_conversations"] == 3
+        assert stats["unique_users"] == 2
+
+
+class TestConversationManagerPersistence:
+    """Tests for ConversationManager with persistence."""
+
+    @pytest.fixture
+    def temp_db(self):
+        """Create a temporary database file."""
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            yield Path(f.name)
+
+    def test_persist_on_update(self, temp_db):
+        """Test that conversations are persisted on update."""
+        manager = ConversationManager(db_path=temp_db, persist=True)
+
+        context = manager.get_or_create("U1", "C1")
+        context.add_message("user", "Hello")
+        manager.update(context)
+
+        # Force persist
+        manager.persist_all()
+
+        # Create new manager to load from DB
+        manager2 = ConversationManager(db_path=temp_db, persist=True)
+        loaded = manager2.get("U1", "C1")
+
+        assert loaded is not None
+        assert len(loaded.history) == 1
+
+    def test_load_on_startup(self, temp_db):
+        """Test that conversations are loaded on startup."""
+        # Create and save
+        manager1 = ConversationManager(db_path=temp_db, persist=True)
+        context = manager1.get_or_create("U1", "C1")
+        context.add_message("user", "Test message")
+        manager1.persist_all()
+
+        # Create new manager - should load existing
+        manager2 = ConversationManager(db_path=temp_db, persist=True)
+
+        assert manager2.get_stats()["active_conversations"] >= 1
+
+    def test_user_history(self, temp_db):
+        """Test getting user conversation history."""
+        manager = ConversationManager(db_path=temp_db, persist=True)
+
+        ctx1 = manager.get_or_create("U1", "C1")
+        ctx1.add_message("user", "Message 1")
+
+        ctx2 = manager.get_or_create("U1", "C2")
+        ctx2.add_message("user", "Message 2")
+
+        manager.persist_all()
+
+        history = manager.get_user_history("U1")
+
+        assert len(history) == 2

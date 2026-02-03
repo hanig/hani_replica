@@ -24,6 +24,7 @@ class Intent:
 
 INTENT_DEFINITIONS = """
 Available intents:
+- chat: General conversation, greetings, small talk, questions about the bot itself
 - search: General semantic search across all data (emails, docs, Slack messages)
 - calendar_check: Check calendar events for a specific date
 - calendar_availability: Find free time slots for scheduling
@@ -48,6 +49,13 @@ Entity types to extract:
 SYSTEM_PROMPT = f"""You are an intent classifier for a personal assistant bot.
 Given a user message, classify the intent and extract relevant entities.
 
+IMPORTANT: Not every message needs a tool!
+- Greetings ("hi", "hello", "hey") → intent: "chat"
+- Questions about the bot ("what can you do", "who are you") → intent: "chat"
+- Casual conversation or small talk → intent: "chat"
+- Thanks or acknowledgments ("thanks", "got it") → intent: "chat"
+- Only use search/calendar/email intents when user clearly wants data
+
 {INTENT_DEFINITIONS}
 
 Respond with a JSON object containing:
@@ -56,6 +64,21 @@ Respond with a JSON object containing:
 - confidence: Your confidence in the classification (0.0 to 1.0)
 
 Examples:
+
+User: "hi"
+Response: {{"intent": "chat", "entities": {{}}, "confidence": 0.99}}
+
+User: "what's up?"
+Response: {{"intent": "chat", "entities": {{}}, "confidence": 0.95}}
+
+User: "hello, how are you?"
+Response: {{"intent": "chat", "entities": {{}}, "confidence": 0.98}}
+
+User: "what can you do?"
+Response: {{"intent": "chat", "entities": {{}}, "confidence": 0.95}}
+
+User: "thanks!"
+Response: {{"intent": "chat", "entities": {{}}, "confidence": 0.95}}
 
 User: "What's on my calendar today?"
 Response: {{"intent": "calendar_check", "entities": {{"date": "today"}}, "confidence": 0.95}}
@@ -176,7 +199,34 @@ class IntentRouter:
         Returns:
             Classified Intent object.
         """
-        text_lower = text.lower()
+        text_lower = text.lower().strip()
+
+        # Check for greetings/chat FIRST - these should never trigger tools
+        greetings = {"hi", "hello", "hey", "sup", "yo", "hiya", "howdy"}
+        greeting_phrases = ["good morning", "good afternoon", "good evening", "what's up", "whats up"]
+
+        # Exact match for simple greetings
+        if text_lower in greetings:
+            return Intent(intent="chat", entities={"message": text}, confidence=0.99)
+
+        # Check for greeting phrases
+        if any(phrase in text_lower for phrase in greeting_phrases):
+            return Intent(intent="chat", entities={"message": text}, confidence=0.95)
+
+        # Check for greetings at the start (e.g., "hi there", "hello!")
+        first_word = text_lower.split()[0].rstrip("!,.")
+        if first_word in greetings:
+            return Intent(intent="chat", entities={"message": text}, confidence=0.95)
+
+        # Questions about the bot itself
+        bot_questions = ["who are you", "what are you", "what can you do", "how do you work"]
+        if any(phrase in text_lower for phrase in bot_questions):
+            return Intent(intent="chat", entities={"message": text}, confidence=0.95)
+
+        # Thanks/acknowledgments
+        thanks_words = ["thanks", "thank you", "thx", "ty", "got it", "ok thanks", "cool", "great"]
+        if any(text_lower.startswith(w) or text_lower == w for w in thanks_words):
+            return Intent(intent="chat", entities={"message": text}, confidence=0.9)
 
         # Email keywords - check first (more specific with "draft")
         if any(w in text_lower for w in ["email", "mail", "inbox"]):
@@ -208,7 +258,12 @@ class IntentRouter:
         if any(w in text_lower for w in ["help", "what can you do", "commands"]):
             return Intent(intent="help", entities={})
 
-        # Default to search with date extraction
+        # Default to chat (not search) for short/unclear messages
+        # Only use search as default for longer, query-like messages
+        if len(text.split()) <= 3:
+            return Intent(intent="chat", entities={"message": text}, confidence=0.5)
+
+        # Default to search with date extraction for longer messages
         entities = {"query": text}
         entities.update(self._extract_date(text))
         return Intent(intent="search", entities=entities, confidence=0.5)

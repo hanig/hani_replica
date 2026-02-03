@@ -83,6 +83,19 @@ EMBEDDING_DIMENSIONS = 3072  # text-embedding-3-large default
 # Anthropic Configuration
 ANTHROPIC_API_KEY = get_env("ANTHROPIC_API_KEY")
 INTENT_MODEL = "claude-3-haiku-20240307"
+AGENT_MODEL = get_env("AGENT_MODEL", "claude-sonnet-4-20250514")
+
+# Bot mode:
+# - "intent" for legacy intent routing with handlers
+# - "agent" for single agent with tool calling
+# - "multi_agent" for orchestrator with specialist agents
+BOT_MODE = get_env("BOT_MODE", "agent")
+
+# Enable streaming responses (applies to agent and multi_agent modes)
+ENABLE_STREAMING = get_env("ENABLE_STREAMING", "true").lower() in ("true", "1", "yes")
+
+# Minimum interval between Slack message updates (in seconds) to avoid rate limiting
+STREAMING_UPDATE_INTERVAL = float(get_env("STREAMING_UPDATE_INTERVAL", "0.5"))
 
 # Database paths
 KNOWLEDGE_GRAPH_DB = PROJECT_ROOT / get_env("KNOWLEDGE_GRAPH_DB", "data/knowledge_graph.db")
@@ -95,6 +108,20 @@ LOG_FILE = PROJECT_ROOT / get_env("LOG_FILE", "logs/hani_replica.log")
 # Sync settings
 SYNC_BATCH_SIZE = int(get_env("SYNC_BATCH_SIZE", "100"))
 EMBEDDING_BATCH_SIZE = int(get_env("EMBEDDING_BATCH_SIZE", "50"))
+
+# Security settings
+# Level: "strict" (block suspicious), "moderate" (warn), "permissive" (log only)
+SECURITY_LEVEL = get_env("SECURITY_LEVEL", "moderate")
+
+# Rate limiting
+RATE_LIMIT_REQUESTS = int(get_env("RATE_LIMIT_REQUESTS", "30"))  # Max requests per window
+RATE_LIMIT_WINDOW = int(get_env("RATE_LIMIT_WINDOW", "60"))  # Window in seconds
+RATE_LIMIT_BLOCK_DURATION = int(get_env("RATE_LIMIT_BLOCK_DURATION", "300"))  # Block duration
+
+# Audit logging
+ENABLE_AUDIT_LOG = get_env("ENABLE_AUDIT_LOG", "true").lower() in ("true", "1", "yes")
+AUDIT_LOG_PATH = PROJECT_ROOT / get_env("AUDIT_LOG_PATH", "data/audit.db")
+AUDIT_RETENTION_DAYS = int(get_env("AUDIT_RETENTION_DAYS", "90"))
 
 # Ensure required directories exist
 DATA_DIR = PROJECT_ROOT / "data"
@@ -121,11 +148,20 @@ def get_config() -> dict[str, Any]:
         "slack_workspace": SLACK_WORKSPACE,
         "embedding_model": EMBEDDING_MODEL,
         "intent_model": INTENT_MODEL,
+        "agent_model": AGENT_MODEL,
+        "bot_mode": BOT_MODE,
+        "enable_streaming": ENABLE_STREAMING,
+        "streaming_update_interval": STREAMING_UPDATE_INTERVAL,
         "knowledge_graph_db": str(KNOWLEDGE_GRAPH_DB),
         "chroma_db_path": str(CHROMA_DB_PATH),
         "log_level": LOG_LEVEL,
         "sync_batch_size": SYNC_BATCH_SIZE,
         "embedding_batch_size": EMBEDDING_BATCH_SIZE,
+        "security_level": SECURITY_LEVEL,
+        "rate_limit_requests": RATE_LIMIT_REQUESTS,
+        "rate_limit_window": RATE_LIMIT_WINDOW,
+        "enable_audit_log": ENABLE_AUDIT_LOG,
+        "audit_retention_days": AUDIT_RETENTION_DAYS,
     }
 
 

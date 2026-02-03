@@ -85,3 +85,78 @@ class TestIntentRouter:
         intent = router.classify("calendar today")
 
         assert 0 <= intent.confidence <= 1
+
+    # Chat intent tests
+    def test_classify_greeting_hi(self, router):
+        """Test that 'hi' is classified as chat, not search."""
+        intent = router.classify("hi")
+
+        assert intent.intent == "chat"
+        assert intent.confidence >= 0.9
+
+    def test_classify_greeting_hello(self, router):
+        """Test that 'hello' is classified as chat."""
+        intent = router.classify("hello")
+
+        assert intent.intent == "chat"
+
+    def test_classify_greeting_hey(self, router):
+        """Test that 'hey' is classified as chat."""
+        intent = router.classify("hey")
+
+        assert intent.intent == "chat"
+
+    def test_classify_greeting_with_punctuation(self, router):
+        """Test that greetings with punctuation work."""
+        intent = router.classify("hi!")
+
+        assert intent.intent == "chat"
+
+    def test_classify_greeting_phrase(self, router):
+        """Test that greeting phrases work."""
+        intent = router.classify("good morning")
+
+        assert intent.intent == "chat"
+
+    def test_classify_whats_up(self, router):
+        """Test that 'what's up' is chat, not search."""
+        intent = router.classify("what's up?")
+
+        assert intent.intent == "chat"
+
+    def test_classify_thanks(self, router):
+        """Test that 'thanks' is classified as chat."""
+        intent = router.classify("thanks!")
+
+        assert intent.intent == "chat"
+
+    def test_classify_thank_you(self, router):
+        """Test that 'thank you' is classified as chat."""
+        intent = router.classify("thank you")
+
+        assert intent.intent == "chat"
+
+    def test_classify_what_can_you_do(self, router):
+        """Test that bot questions are chat intent."""
+        intent = router.classify("what can you do?")
+
+        # Could be chat or help, both are acceptable
+        assert intent.intent in ("chat", "help")
+
+    def test_classify_who_are_you(self, router):
+        """Test that 'who are you' is chat."""
+        intent = router.classify("who are you")
+
+        assert intent.intent == "chat"
+
+    def test_short_ambiguous_defaults_to_chat(self, router):
+        """Test that short ambiguous messages default to chat."""
+        intent = router.classify("ok")
+
+        assert intent.intent == "chat"
+
+    def test_longer_query_defaults_to_search(self, router):
+        """Test that longer query-like messages default to search."""
+        intent = router.classify("find information about machine learning models")
+
+        assert intent.intent == "search"

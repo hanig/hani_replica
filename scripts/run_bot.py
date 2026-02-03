@@ -25,6 +25,23 @@ def main():
         action="store_true",
         help="Only validate configuration, don't start bot",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["intent", "agent", "multi_agent"],
+        default=None,
+        help="Bot mode: 'intent' for legacy routing, 'agent' for tool calling, 'multi_agent' for specialist agents (default: from config)",
+    )
+    parser.add_argument(
+        "--streaming",
+        action="store_true",
+        default=None,
+        help="Enable streaming responses (agent mode only)",
+    )
+    parser.add_argument(
+        "--no-streaming",
+        action="store_true",
+        help="Disable streaming responses",
+    )
 
     args = parser.parse_args()
 
@@ -69,9 +86,18 @@ def main():
 
     logger.info("Starting Hani Replica Slack bot...")
     logger.info(f"Log file: {LOG_FILE}")
+    if args.mode:
+        logger.info(f"Mode override: {args.mode}")
+
+    # Determine streaming setting
+    enable_streaming = None
+    if args.streaming:
+        enable_streaming = True
+    elif args.no_streaming:
+        enable_streaming = False
 
     try:
-        run_bot()
+        run_bot(mode=args.mode, enable_streaming=enable_streaming)
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
     except Exception as e:
