@@ -37,6 +37,7 @@ class EmailAgent(BaseAgent):
             "SearchEmailsTool",
             "GetUnreadCountsTool",
             "CreateEmailDraftTool",
+            "SendEmailTool",
             "FindPersonTool",  # Useful for resolving contact names
             "RespondToUserTool",
         ]
@@ -57,7 +58,8 @@ ACCOUNTS (in priority order):
 CAPABILITIES:
 - Search emails with Gmail query syntax
 - Check unread counts across all accounts
-- Create email drafts (NEVER send automatically)
+- Create email drafts
+- Send emails directly
 - Find contacts in the knowledge graph
 
 SEARCH TIPS:
@@ -70,13 +72,13 @@ SEARCH TIPS:
 GUIDELINES:
 1. When searching, start with Tier 1 accounts
 2. Summarize results concisely (subject, sender, date)
-3. For drafts, always confirm content before creating
+3. For drafts/emails, always confirm content before creating/sending
 4. Use FindPersonTool to resolve nicknames to email addresses
 5. Use RespondToUserTool to send your final response
 
 SAFETY:
-- Email drafts are CREATED, never sent automatically
-- Always ask for confirmation on draft content
+- ALWAYS confirm with the user before sending an email
+- Show the email content (to, subject, body) and ask for explicit confirmation
 - Be careful with sensitive information in responses"""
 
     @property

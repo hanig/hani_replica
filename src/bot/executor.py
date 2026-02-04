@@ -28,6 +28,7 @@ from .tools import (
     CheckAvailabilityTool,
     GetUnreadCountsTool,
     CreateEmailDraftTool,
+    SendEmailTool,
     GetGitHubPRsTool,
     GetGitHubIssuesTool,
     SearchGitHubCodeTool,
@@ -55,9 +56,10 @@ SYSTEM_PROMPT = """You are Hani's personal AI assistant with access to tools for
 You have access to tools that let you:
 - Search across all indexed data (emails, documents, calendar events, Slack messages, GitHub)
 - Search and manage emails across multiple Google accounts
+- Send emails and create drafts
 - Check calendar events and availability
 - Search GitHub code, issues, and PRs
-- Create GitHub issues and email drafts
+- Create GitHub issues
 - Get daily briefings
 
 Guidelines:
@@ -67,7 +69,8 @@ Guidelines:
 4. If a task requires multiple steps, execute them in sequence.
 5. Always provide clear, concise responses.
 6. Never make up information - only use data from tools.
-7. For actions like creating issues or drafts, confirm the details before executing.
+7. For actions like creating issues, drafts, or sending emails, confirm the details before executing.
+8. ALWAYS confirm with the user before sending an email - show them the content first.
 
 Current date: {current_date}
 """
@@ -265,6 +268,26 @@ class ToolExecutor:
             "to": args["to"],
             "subject": args["subject"],
             "message": f"Draft created in {account} account",
+        })
+
+    def _execute_send_email(self, args: dict) -> ToolResult:
+        """Send an email."""
+        account = args.get("account", "arc")
+        result = self.multi_google.send_email(
+            account=account,
+            to=args["to"],
+            subject=args["subject"],
+            body=args["body"],
+            cc=args.get("cc"),
+            bcc=args.get("bcc"),
+        )
+        return ToolResult(data={
+            "message_id": result.get("id"),
+            "thread_id": result.get("threadId"),
+            "account": account,
+            "to": args["to"],
+            "subject": args["subject"],
+            "message": f"Email sent successfully from {account} account",
         })
 
     def _execute_get_github_prs(self, args: dict) -> ToolResult:

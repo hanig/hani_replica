@@ -411,3 +411,71 @@ class MultiGoogleManager:
                     counts[account] = -1
 
         return counts
+
+    def create_draft(
+        self,
+        account: str,
+        to: str,
+        subject: str,
+        body: str,
+        cc: str | None = None,
+        bcc: str | None = None,
+    ) -> dict[str, Any]:
+        """Create an email draft in a specific account.
+
+        Args:
+            account: Account to create draft in.
+            to: Recipient email address.
+            subject: Email subject.
+            body: Email body.
+            cc: CC recipients.
+            bcc: BCC recipients.
+
+        Returns:
+            Created draft data.
+        """
+        client = self.get_gmail_client(account)
+        if not client:
+            raise ValueError(f"No Gmail client available for account: {account}")
+
+        return client.create_draft(
+            to=to,
+            subject=subject,
+            body=body,
+            cc=cc,
+            bcc=bcc,
+        )
+
+    def send_email(
+        self,
+        account: str,
+        to: str,
+        subject: str,
+        body: str,
+        cc: str | None = None,
+        bcc: str | None = None,
+    ) -> dict[str, Any]:
+        """Send an email from a specific account.
+
+        Args:
+            account: Account to send from.
+            to: Recipient email address.
+            subject: Email subject.
+            body: Email body.
+            cc: CC recipients.
+            bcc: BCC recipients.
+
+        Returns:
+            Sent message data.
+        """
+        client = self.get_gmail_client(account)
+        if not client:
+            raise ValueError(f"No Gmail client available for account: {account}")
+
+        return client.send_message(
+            to=to,
+            subject=subject,
+            body=body,
+            cc=cc,
+            bcc=bcc,
+        )

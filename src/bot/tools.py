@@ -123,6 +123,20 @@ class CreateEmailDraftTool(BaseModel):
     )
 
 
+class SendEmailTool(BaseModel):
+    """Send an email immediately. Use with caution - this actually sends the email."""
+
+    to: str = Field(description="Recipient email address")
+    subject: str = Field(description="Email subject line")
+    body: str = Field(description="Email body content")
+    account: str = Field(
+        default="arc",
+        description="Account to send from: arc, personal, tahoe, therna, amplify",
+    )
+    cc: str | None = Field(default=None, description="CC recipients (comma-separated)")
+    bcc: str | None = Field(default=None, description="BCC recipients (comma-separated)")
+
+
 # --- GitHub Tools ---
 
 class GetGitHubPRsTool(BaseModel):
@@ -209,6 +223,7 @@ ALL_TOOLS: list[type[BaseModel]] = [
     CheckAvailabilityTool,
     GetUnreadCountsTool,
     CreateEmailDraftTool,
+    SendEmailTool,
     GetGitHubPRsTool,
     GetGitHubIssuesTool,
     SearchGitHubCodeTool,
@@ -228,6 +243,7 @@ TOOL_NAME_MAP = {
     "CheckAvailabilityTool": "check_availability",
     "GetUnreadCountsTool": "get_unread_counts",
     "CreateEmailDraftTool": "create_email_draft",
+    "SendEmailTool": "send_email",
     "GetGitHubPRsTool": "get_github_prs",
     "GetGitHubIssuesTool": "get_github_issues",
     "SearchGitHubCodeTool": "search_github_code",
