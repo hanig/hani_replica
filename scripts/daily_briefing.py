@@ -2,6 +2,7 @@
 """Generate a daily briefing summary."""
 
 import argparse
+import logging
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +12,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.integrations.github_client import GitHubClient
 from src.integrations.google_multi import MultiGoogleManager
+from src.integrations.todoist_client import TodoistClient
+from src.integrations.slack import SlackClient
+from src.config import SLACK_AUTHORIZED_USERS
+
+logger = logging.getLogger(__name__)
 
 
 def generate_briefing(date: datetime | None = None) -> str:
@@ -121,6 +127,70 @@ def generate_briefing(date: datetime | None = None) -> str:
 
     lines.append("")
 
+    # Todoist Tasks
+    lines.append("✅ TODOIST TASKS")
+    lines.append("-" * 40)
+
+    try:
+        todoist = TodoistClient()
+        projects = todoist.list_projects()
+        project_map = {p["id"]: p["name"] for p in projects}
+
+        # Get tasks due today or overdue
+        all_tasks = todoist.list_tasks()
+
+        # Separate by priority and due date
+        overdue = []
+        due_today = []
+        upcoming = []
+        no_date = []
+
+        today_str = date.strftime("%Y-%m-%d")
+
+        for task in all_tasks:
+            due = task.get("due")
+            if due:
+                due_date = due.get("date", "")
+                if due_date < today_str:
+                    overdue.append(task)
+                elif due_date == today_str:
+                    due_today.append(task)
+                else:
+                    upcoming.append(task)
+            else:
+                no_date.append(task)
+
+        # Show overdue (high priority)
+        if overdue:
+            lines.append(f"  ⚠️  OVERDUE ({len(overdue)}):")
+            for task in overdue[:5]:
+                proj = project_map.get(task.get("project_id"), "Inbox")
+                due_str = task.get("due", {}).get("date", "")
+                lines.append(f"    • [{proj}] {task['content'][:35]} (due {due_str})")
+            if len(overdue) > 5:
+                lines.append(f"    ... and {len(overdue) - 5} more overdue")
+            lines.append("")
+
+        # Show due today
+        if due_today:
+            lines.append(f"  📌 DUE TODAY ({len(due_today)}):")
+            for task in due_today[:5]:
+                proj = project_map.get(task.get("project_id"), "Inbox")
+                lines.append(f"    • [{proj}] {task['content'][:40]}")
+            if len(due_today) > 5:
+                lines.append(f"    ... and {len(due_today) - 5} more")
+        else:
+            lines.append("  No tasks due today")
+
+        # Summary
+        lines.append("")
+        lines.append(f"  Total active tasks: {len(all_tasks)}")
+
+    except Exception as e:
+        lines.append(f"  Error loading Todoist: {e}")
+
+    lines.append("")
+
     # Availability
     lines.append("🟢 AVAILABILITY")
     lines.append("-" * 40)
@@ -158,6 +228,46 @@ def generate_briefing(date: datetime | None = None) -> str:
     return "\n".join(lines)
 
 
+def send_to_slack(briefing: str, user_id: str | None = None) -> bool:
+    """Send briefing to Slack.
+
+    Args:
+        briefing: The briefing text.
+        user_id: Slack user ID to DM. Defaults to first authorized user.
+
+    Returns:
+        True if sent successfully.
+    """
+    try:
+        slack = SlackClient()
+
+        # Default to first authorized user
+        if not user_id:
+            if SLACK_AUTHORIZED_USERS:
+                user_id = SLACK_AUTHORIZED_USERS[0]
+            else:
+                logger.error("No authorized Slack users configured")
+                return False
+
+        # Open DM channel with user
+        response = slack._client.conversations_open(users=[user_id])
+        channel_id = response["channel"]["id"]
+
+        # Send the briefing
+        slack._client.chat_postMessage(
+            channel=channel_id,
+            text=f"```{briefing}```",
+            mrkdwn=True,
+        )
+
+        logger.info(f"Briefing sent to Slack user {user_id}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error sending briefing to Slack: {e}")
+        return False
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Generate daily briefing")
@@ -166,16 +276,43 @@ def main():
         type=str,
         help="Output file (default: print to stdout)",
     )
+    parser.add_argument(
+        "--slack",
+        action="store_true",
+        help="Send briefing to Slack DM",
+    )
+    parser.add_argument(
+        "--slack-user",
+        type=str,
+        help="Slack user ID to send to (default: first authorized user)",
+    )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Don't print to stdout (useful with --slack)",
+    )
 
     args = parser.parse_args()
 
     briefing = generate_briefing()
 
+    # Send to Slack if requested
+    if args.slack:
+        success = send_to_slack(briefing, args.slack_user)
+        if success:
+            print("Briefing sent to Slack")
+        else:
+            print("Failed to send briefing to Slack")
+            sys.exit(1)
+
+    # Save to file if requested
     if args.output:
         with open(args.output, "w") as f:
             f.write(briefing)
         print(f"Briefing saved to {args.output}")
-    else:
+
+    # Print to stdout unless quiet
+    if not args.quiet:
         print(briefing)
 
 
