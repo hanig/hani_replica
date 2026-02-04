@@ -206,6 +206,77 @@ class GetDailyBriefingTool(BaseModel):
     pass  # No parameters needed
 
 
+# --- Todoist Tools ---
+
+class GetTodoistTasksTool(BaseModel):
+    """Get active tasks from Todoist."""
+
+    project: str | None = Field(
+        default=None,
+        description="Filter by project name (optional)",
+    )
+    filter: str | None = Field(
+        default=None,
+        description="Todoist filter string like 'today', 'overdue', '@label' (optional)",
+    )
+
+
+class CreateTodoistTaskTool(BaseModel):
+    """Create a new task in Todoist."""
+
+    content: str = Field(description="Task title/content")
+    description: str | None = Field(default=None, description="Task description")
+    due: str | None = Field(
+        default=None,
+        description="Due date in natural language (e.g., 'tomorrow', 'next monday', 'jan 15')",
+    )
+    project: str | None = Field(
+        default=None,
+        description="Project name to add task to (defaults to Inbox)",
+    )
+    priority: int = Field(
+        default=1,
+        description="Priority 1-4 where 4 is urgent (default 1)",
+    )
+    labels: list[str] | None = Field(
+        default=None,
+        description="Labels to add to the task",
+    )
+
+
+class CompleteTodoistTaskTool(BaseModel):
+    """Mark a Todoist task as complete."""
+
+    task_id: str = Field(description="The task ID to complete")
+
+
+# --- Notion Tools ---
+
+class SearchNotionTool(BaseModel):
+    """Search Notion pages and databases."""
+
+    query: str = Field(description="Search query text")
+    max_results: int = Field(default=10, description="Maximum number of results")
+
+
+class CreateNotionPageTool(BaseModel):
+    """Create a new page in a Notion database."""
+
+    database_id: str = Field(description="Target database ID")
+    title: str = Field(description="Page title")
+    properties: dict = Field(
+        default_factory=dict,
+        description="Additional properties matching the database schema",
+    )
+
+
+class AddNotionCommentTool(BaseModel):
+    """Add a comment to a Notion page."""
+
+    page_id: str = Field(description="Page ID to comment on")
+    content: str = Field(description="Comment text")
+
+
 # --- Response Tool ---
 
 class RespondToUserTool(BaseModel):
@@ -231,6 +302,12 @@ ALL_TOOLS: list[type[BaseModel]] = [
     FindPersonTool,
     GetPersonActivityTool,
     GetDailyBriefingTool,
+    GetTodoistTasksTool,
+    CreateTodoistTaskTool,
+    CompleteTodoistTaskTool,
+    SearchNotionTool,
+    CreateNotionPageTool,
+    AddNotionCommentTool,
     RespondToUserTool,
 ]
 
@@ -251,6 +328,12 @@ TOOL_NAME_MAP = {
     "FindPersonTool": "find_person",
     "GetPersonActivityTool": "get_person_activity",
     "GetDailyBriefingTool": "get_daily_briefing",
+    "GetTodoistTasksTool": "get_todoist_tasks",
+    "CreateTodoistTaskTool": "create_todoist_task",
+    "CompleteTodoistTaskTool": "complete_todoist_task",
+    "SearchNotionTool": "search_notion",
+    "CreateNotionPageTool": "create_notion_page",
+    "AddNotionCommentTool": "add_notion_comment",
     "RespondToUserTool": "respond_to_user",
 }
 

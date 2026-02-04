@@ -15,7 +15,9 @@ from src.indexers.gcal_indexer import CalendarIndexer
 from src.indexers.gdrive_indexer import DriveIndexer
 from src.indexers.github_indexer import GitHubIndexer
 from src.indexers.gmail_indexer import GmailIndexer
+from src.indexers.notion_indexer import NotionIndexer
 from src.indexers.slack_indexer import SlackIndexer
+from src.indexers.todoist_indexer import TodoistIndexer
 from src.knowledge_graph import KnowledgeGraph
 from src.semantic.semantic_indexer import SemanticIndexer
 
@@ -123,6 +125,48 @@ def sync_slack(kg: KnowledgeGraph) -> dict:
         return {"error": str(e)}
 
 
+def sync_notion(kg: KnowledgeGraph) -> dict:
+    """Sync Notion data.
+
+    Args:
+        kg: Knowledge graph instance.
+
+    Returns:
+        Statistics dictionary.
+    """
+    logger.info(f"\n{'=' * 60}")
+    logger.info("Syncing Notion")
+    logger.info(f"{'=' * 60}")
+
+    indexer = NotionIndexer(kg)
+    try:
+        return indexer.index_all()
+    except Exception as e:
+        logger.error(f"Notion error: {e}")
+        return {"error": str(e)}
+
+
+def sync_todoist(kg: KnowledgeGraph) -> dict:
+    """Sync Todoist data.
+
+    Args:
+        kg: Knowledge graph instance.
+
+    Returns:
+        Statistics dictionary.
+    """
+    logger.info(f"\n{'=' * 60}")
+    logger.info("Syncing Todoist")
+    logger.info(f"{'=' * 60}")
+
+    indexer = TodoistIndexer(kg)
+    try:
+        return indexer.index_all()
+    except Exception as e:
+        logger.error(f"Todoist error: {e}")
+        return {"error": str(e)}
+
+
 def build_semantic_index(kg: KnowledgeGraph) -> dict:
     """Build semantic embeddings index.
 
@@ -165,6 +209,16 @@ def main():
         help="Skip Slack sync",
     )
     parser.add_argument(
+        "--skip-notion",
+        action="store_true",
+        help="Skip Notion sync",
+    )
+    parser.add_argument(
+        "--skip-todoist",
+        action="store_true",
+        help="Skip Todoist sync",
+    )
+    parser.add_argument(
         "--skip-semantic",
         action="store_true",
         help="Skip semantic indexing",
@@ -205,6 +259,18 @@ def main():
         all_stats["slack"] = sync_slack(kg)
     else:
         logger.info("Skipping Slack sync")
+
+    # Sync Notion
+    if not args.skip_notion:
+        all_stats["notion"] = sync_notion(kg)
+    else:
+        logger.info("Skipping Notion sync")
+
+    # Sync Todoist
+    if not args.skip_todoist:
+        all_stats["todoist"] = sync_todoist(kg)
+    else:
+        logger.info("Skipping Todoist sync")
 
     # Build semantic index
     if not args.skip_semantic:

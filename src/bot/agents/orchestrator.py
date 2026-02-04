@@ -54,6 +54,10 @@ PERSONAL_DATA_KEYWORDS = [
     "briefing", "summary", "catch up", "what did i miss", "update me",
     # Slack
     "slack", "channel", "thread",
+    # Todoist
+    "task", "tasks", "todoist", "to-do", "todo", "to do",
+    # Notion
+    "notion", "notion page", "notion database",
 ]
 
 

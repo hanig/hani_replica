@@ -7,7 +7,9 @@ from .gdrive import DriveClient
 from .gdocs import DocsClient
 from .gcalendar import CalendarClient
 from .github_client import GitHubClient
+from .notion_client import NotionClient
 from .slack import SlackClient
+from .todoist_client import TodoistClient
 
 __all__ = [
     "get_credentials",
@@ -18,5 +20,7 @@ __all__ = [
     "DocsClient",
     "CalendarClient",
     "GitHubClient",
+    "NotionClient",
     "SlackClient",
+    "TodoistClient",
 ]

@@ -14,6 +14,8 @@ RESEARCH_KEYWORDS = {
     "search", "find", "look", "what", "where", "who",
     "information", "about", "related", "document", "file",
     "drive", "note", "summary", "briefing", "overview",
+    "task", "tasks", "todoist", "todo", "to-do",
+    "notion", "page", "database",
 }
 
 
@@ -40,6 +42,12 @@ class ResearchAgent(BaseAgent):
             "FindPersonTool",
             "GetPersonActivityTool",
             "GetDailyBriefingTool",
+            "GetTodoistTasksTool",
+            "CreateTodoistTaskTool",
+            "CompleteTodoistTaskTool",
+            "SearchNotionTool",
+            "CreateNotionPageTool",
+            "AddNotionCommentTool",
             "RespondToUserTool",
         ]
 
@@ -58,6 +66,8 @@ KNOWLEDGE GRAPH SOURCES:
 - Google Drive documents
 - GitHub activity
 - Slack conversations
+- Todoist tasks
+- Notion pages and databases
 
 CAPABILITIES:
 - Semantic search across all indexed content
@@ -65,12 +75,23 @@ CAPABILITIES:
 - Find people and their contact information
 - Get activity history for specific people
 - Generate daily briefings
+- Get, create, and complete Todoist tasks
+- Search and create Notion pages
 
 SEARCH STRATEGIES:
 1. Start with semantic search for broad queries
 2. Use specific source filters when you know the type
 3. For people queries, use FindPersonTool first
 4. For recent activity, check GetDailyBriefingTool
+
+TODOIST TASKS:
+- Use GetTodoistTasksTool when user asks about "my tasks", "to-do", "what do I need to do"
+- Use CreateTodoistTaskTool to add new tasks (supports natural language due dates like "tomorrow")
+- Use CompleteTodoistTaskTool to mark tasks done
+
+NOTION:
+- Use SearchNotionTool for Notion page/database queries
+- Use CreateNotionPageTool to add pages to databases
 
 GUIDELINES:
 1. Summarize findings concisely
@@ -96,6 +117,14 @@ DAILY BRIEFING:
         """Estimate relevance for research tasks."""
         message_lower = message.lower()
         words = set(message_lower.split())
+
+        # High confidence for Todoist queries
+        if any(kw in message_lower for kw in ["task", "tasks", "todoist", "todo", "to-do", "to do"]):
+            return 0.9
+
+        # High confidence for Notion queries
+        if "notion" in message_lower:
+            return 0.9
 
         # Check for research keywords
         matches = words & RESEARCH_KEYWORDS

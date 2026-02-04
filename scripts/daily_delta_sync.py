@@ -15,7 +15,9 @@ from src.indexers.gcal_indexer import CalendarIndexer
 from src.indexers.gdrive_indexer import DriveIndexer
 from src.indexers.github_indexer import GitHubIndexer
 from src.indexers.gmail_indexer import GmailIndexer
+from src.indexers.notion_indexer import NotionIndexer
 from src.indexers.slack_indexer import SlackIndexer
+from src.indexers.todoist_indexer import TodoistIndexer
 from src.knowledge_graph import KnowledgeGraph
 from src.semantic.semantic_indexer import SemanticIndexer
 
@@ -112,6 +114,42 @@ def delta_sync_slack(kg: KnowledgeGraph) -> dict:
         return {"error": str(e)}
 
 
+def delta_sync_notion(kg: KnowledgeGraph) -> dict:
+    """Delta sync Notion data.
+
+    Args:
+        kg: Knowledge graph instance.
+
+    Returns:
+        Statistics dictionary.
+    """
+    logger.info("Delta sync for Notion")
+    indexer = NotionIndexer(kg)
+    try:
+        return indexer.index_delta(hours_back=24)
+    except Exception as e:
+        logger.error(f"Notion delta error: {e}")
+        return {"error": str(e)}
+
+
+def delta_sync_todoist(kg: KnowledgeGraph) -> dict:
+    """Delta sync Todoist data.
+
+    Args:
+        kg: Knowledge graph instance.
+
+    Returns:
+        Statistics dictionary.
+    """
+    logger.info("Delta sync for Todoist")
+    indexer = TodoistIndexer(kg)
+    try:
+        return indexer.index_delta()
+    except Exception as e:
+        logger.error(f"Todoist delta error: {e}")
+        return {"error": str(e)}
+
+
 def update_semantic_index(kg: KnowledgeGraph) -> dict:
     """Update semantic index with new content.
 
@@ -153,6 +191,16 @@ def main():
         help="Skip Slack sync",
     )
     parser.add_argument(
+        "--skip-notion",
+        action="store_true",
+        help="Skip Notion sync",
+    )
+    parser.add_argument(
+        "--skip-todoist",
+        action="store_true",
+        help="Skip Todoist sync",
+    )
+    parser.add_argument(
         "--skip-semantic",
         action="store_true",
         help="Skip semantic index update",
@@ -174,6 +222,12 @@ def main():
 
     if not args.skip_slack:
         all_stats["slack"] = delta_sync_slack(kg)
+
+    if not args.skip_notion:
+        all_stats["notion"] = delta_sync_notion(kg)
+
+    if not args.skip_todoist:
+        all_stats["todoist"] = delta_sync_todoist(kg)
 
     if not args.skip_semantic:
         all_stats["semantic"] = update_semantic_index(kg)

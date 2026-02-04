@@ -97,6 +97,13 @@ SLACK_BOT_TOKEN = get_env("SLACK_BOT_TOKEN")
 SLACK_APP_TOKEN = get_env("SLACK_APP_TOKEN")
 SLACK_WORKSPACE = get_env("SLACK_WORKSPACE")
 
+# Notion Configuration
+NOTION_API_KEY = get_env("NOTION_API_KEY")
+NOTION_WORKSPACE = get_env("NOTION_WORKSPACE", "default")
+
+# Todoist Configuration
+TODOIST_API_KEY = get_env("TODOIST_API_KEY")
+
 # Authorized Slack users (comma-separated user IDs)
 _authorized_users = get_env("SLACK_AUTHORIZED_USERS", "")
 SLACK_AUTHORIZED_USERS = [u.strip() for u in _authorized_users.split(",") if u.strip()]

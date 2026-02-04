@@ -51,7 +51,7 @@ MAX_ITERATIONS = 10
 # Model to use for agent
 AGENT_MODEL = "claude-sonnet-4-20250514"
 
-SYSTEM_PROMPT = """You are Hani's personal AI assistant with access to tools for managing emails, calendar, GitHub, and searching a personal knowledge graph.
+SYSTEM_PROMPT = """You are Hani's personal AI assistant with access to tools for managing emails, calendar, GitHub, Todoist tasks, and searching a personal knowledge graph.
 
 You have access to tools that let you:
 - Search across all indexed data (emails, documents, calendar events, Slack messages, GitHub)
@@ -60,6 +60,8 @@ You have access to tools that let you:
 - Check calendar events and availability
 - Search GitHub code, issues, and PRs
 - Create GitHub issues
+- Get and create Todoist tasks, mark tasks complete
+- Search Notion pages and databases
 - Get daily briefings
 
 Guidelines:
@@ -71,6 +73,7 @@ Guidelines:
 6. Never make up information - only use data from tools.
 7. For actions like creating issues, drafts, or sending emails, confirm the details before executing.
 8. ALWAYS confirm with the user before sending an email - show them the content first.
+9. When the user asks about "tasks" or "to-dos", use the Todoist tools (GetTodoistTasksTool, CreateTodoistTaskTool).
 
 Current date: {current_date}
 """
@@ -121,6 +124,8 @@ class ToolExecutor:
         self._multi_google = None
         self._github_client = None
         self._query_engine = None
+        self._notion_client = None
+        self._todoist_client = None
 
     @property
     def semantic_indexer(self):
@@ -153,6 +158,22 @@ class ToolExecutor:
             from ..query.engine import QueryEngine
             self._query_engine = QueryEngine()
         return self._query_engine
+
+    @property
+    def notion_client(self):
+        """Lazy load Notion client."""
+        if self._notion_client is None:
+            from ..integrations.notion_client import NotionClient
+            self._notion_client = NotionClient()
+        return self._notion_client
+
+    @property
+    def todoist_client(self):
+        """Lazy load Todoist client."""
+        if self._todoist_client is None:
+            from ..integrations.todoist_client import TodoistClient
+            self._todoist_client = TodoistClient()
+        return self._todoist_client
 
     def execute(self, tool_name: str, arguments: dict[str, Any]) -> ToolResult:
         """Execute a tool and return the result.
@@ -407,6 +428,154 @@ class ToolExecutor:
     def _execute_respond_to_user(self, args: dict) -> ToolResult:
         """Handle direct response to user (special case - not really a tool)."""
         return ToolResult(data={"message": args["message"]})
+
+    def _execute_get_todoist_tasks(self, args: dict) -> ToolResult:
+        """Get active tasks from Todoist."""
+        # Get project ID if project name provided
+        project_id = None
+        project_name = args.get("project")
+        if project_name:
+            projects = self.todoist_client.list_projects()
+            for p in projects:
+                if p["name"].lower() == project_name.lower():
+                    project_id = p["id"]
+                    break
+
+        tasks = self.todoist_client.list_tasks(
+            project_id=project_id,
+            filter=args.get("filter"),
+        )
+
+        # Get project names for context
+        projects = self.todoist_client.list_projects()
+        project_map = {p["id"]: p["name"] for p in projects}
+
+        # Format tasks for display
+        formatted = []
+        for task in tasks:
+            proj_name = project_map.get(task.get("project_id"), "Inbox")
+            due_str = None
+            if task.get("due"):
+                due_str = task["due"].get("string") or task["due"].get("date")
+
+            formatted.append({
+                "id": task["id"],
+                "content": task["content"],
+                "project": proj_name,
+                "due": due_str,
+                "priority": task.get("priority", 1),
+                "labels": task.get("labels", []),
+                "url": task.get("url"),
+            })
+
+        return ToolResult(data={
+            "task_count": len(formatted),
+            "tasks": formatted,
+        })
+
+    def _execute_create_todoist_task(self, args: dict) -> ToolResult:
+        """Create a new task in Todoist."""
+        # Find project ID if project name provided
+        project_id = None
+        project_name = args.get("project")
+        if project_name:
+            projects = self.todoist_client.list_projects()
+            for p in projects:
+                if p["name"].lower() == project_name.lower():
+                    project_id = p["id"]
+                    break
+
+        task = self.todoist_client.create_task(
+            content=args["content"],
+            description=args.get("description"),
+            project_id=project_id,
+            due_string=args.get("due"),
+            priority=args.get("priority", 1),
+            labels=args.get("labels"),
+        )
+
+        return ToolResult(data={
+            "task_id": task["id"],
+            "content": task["content"],
+            "url": task.get("url"),
+            "message": f"Task created: {task['content']}",
+        })
+
+    def _execute_complete_todoist_task(self, args: dict) -> ToolResult:
+        """Mark a Todoist task as complete."""
+        task_id = args["task_id"]
+
+        # Get task info first for confirmation message
+        try:
+            task = self.todoist_client.get_task(task_id)
+            task_content = task.get("content", "Unknown task")
+        except Exception:
+            task_content = "Unknown task"
+
+        self.todoist_client.complete_task(task_id)
+
+        return ToolResult(data={
+            "task_id": task_id,
+            "message": f"Completed: {task_content}",
+        })
+
+    def _execute_search_notion(self, args: dict) -> ToolResult:
+        """Search Notion pages and databases."""
+        results = self.notion_client.search(
+            query=args["query"],
+            max_results=args.get("max_results", 10),
+        )
+
+        # Format results for display
+        formatted = []
+        for item in results:
+            formatted.append({
+                "id": item["id"],
+                "type": item.get("object", "page"),
+                "title": item.get("title", "Untitled"),
+                "url": item.get("url"),
+                "last_edited": item.get("last_edited_time"),
+            })
+
+        return ToolResult(data={
+            "query": args["query"],
+            "result_count": len(formatted),
+            "results": formatted,
+        })
+
+    def _execute_create_notion_page(self, args: dict) -> ToolResult:
+        """Create a new page in a Notion database."""
+        # Build properties with title
+        properties = args.get("properties", {})
+        # Add title property (Notion databases typically use "Name" or "Title")
+        properties["Name"] = {
+            "title": [{"text": {"content": args["title"]}}]
+        }
+
+        page = self.notion_client.create_page(
+            database_id=args["database_id"],
+            properties=properties,
+        )
+
+        return ToolResult(data={
+            "page_id": page["id"],
+            "url": page.get("url"),
+            "title": args["title"],
+            "message": f"Page created: {page.get('url', page['id'])}",
+        })
+
+    def _execute_add_notion_comment(self, args: dict) -> ToolResult:
+        """Add a comment to a Notion page."""
+        comment = self.notion_client.add_comment(
+            page_id=args["page_id"],
+            content=args["content"],
+        )
+
+        return ToolResult(data={
+            "comment_id": comment["id"],
+            "page_id": args["page_id"],
+            "message": "Comment added successfully",
+        })
 
 
 class AgentExecutor:
