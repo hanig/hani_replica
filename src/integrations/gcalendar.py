@@ -297,6 +297,172 @@ class CalendarClient:
             logger.error(f"Error listing changes: {e}")
             raise
 
+    def create_event(
+        self,
+        summary: str,
+        start: datetime,
+        end: datetime,
+        description: str | None = None,
+        attendees: list[str] | None = None,
+        location: str | None = None,
+        calendar_id: str = "primary",
+        send_notifications: bool = True,
+    ) -> dict[str, Any]:
+        """Create a calendar event.
+
+        Args:
+            summary: Event title.
+            start: Event start time.
+            end: Event end time.
+            description: Event description.
+            attendees: List of attendee email addresses.
+            location: Event location.
+            calendar_id: Calendar ID (default "primary").
+            send_notifications: Whether to send email notifications to attendees.
+
+        Returns:
+            Created event data.
+        """
+        # Ensure times have timezone info
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
+
+        event_body: dict[str, Any] = {
+            "summary": summary,
+            "start": {"dateTime": start.isoformat()},
+            "end": {"dateTime": end.isoformat()},
+        }
+
+        if description:
+            event_body["description"] = description
+        if location:
+            event_body["location"] = location
+        if attendees:
+            event_body["attendees"] = [{"email": email} for email in attendees]
+
+        try:
+            return (
+                self.service.events()
+                .insert(
+                    calendarId=calendar_id,
+                    body=event_body,
+                    sendUpdates="all" if send_notifications else "none",
+                )
+                .execute()
+            )
+        except HttpError as e:
+            logger.error(f"Error creating event: {e}")
+            raise
+
+    def update_event(
+        self,
+        event_id: str,
+        calendar_id: str = "primary",
+        send_notifications: bool = True,
+        **updates: Any,
+    ) -> dict[str, Any]:
+        """Update an existing calendar event.
+
+        Args:
+            event_id: The event ID to update.
+            calendar_id: Calendar ID (default "primary").
+            send_notifications: Whether to send email notifications about the update.
+            **updates: Fields to update (summary, description, location, start, end, attendees).
+
+        Returns:
+            Updated event data.
+        """
+        # First get the existing event
+        event = self.get_event(event_id, calendar_id)
+        if not event:
+            raise ValueError(f"Event {event_id} not found")
+
+        # Apply updates
+        for key, value in updates.items():
+            if key in ("start", "end") and isinstance(value, datetime):
+                if value.tzinfo is None:
+                    value = value.replace(tzinfo=timezone.utc)
+                event[key] = {"dateTime": value.isoformat()}
+            elif key == "attendees" and isinstance(value, list):
+                event[key] = [{"email": email} for email in value]
+            else:
+                event[key] = value
+
+        try:
+            return (
+                self.service.events()
+                .update(
+                    calendarId=calendar_id,
+                    eventId=event_id,
+                    body=event,
+                    sendUpdates="all" if send_notifications else "none",
+                )
+                .execute()
+            )
+        except HttpError as e:
+            logger.error(f"Error updating event {event_id}: {e}")
+            raise
+
+    def delete_event(
+        self,
+        event_id: str,
+        calendar_id: str = "primary",
+        send_notifications: bool = True,
+    ) -> None:
+        """Delete a calendar event.
+
+        Args:
+            event_id: The event ID to delete.
+            calendar_id: Calendar ID (default "primary").
+            send_notifications: Whether to send cancellation notifications.
+        """
+        try:
+            self.service.events().delete(
+                calendarId=calendar_id,
+                eventId=event_id,
+                sendUpdates="all" if send_notifications else "none",
+            ).execute()
+        except HttpError as e:
+            if e.resp.status == 404:
+                logger.warning(f"Event {event_id} not found, may already be deleted")
+                return
+            logger.error(f"Error deleting event {event_id}: {e}")
+            raise
+
+    def create_quick_event(
+        self,
+        text: str,
+        calendar_id: str = "primary",
+        send_notifications: bool = True,
+    ) -> dict[str, Any]:
+        """Create an event from natural language text.
+
+        Uses Google's natural language processing to parse event details.
+
+        Args:
+            text: Natural language description (e.g., "Lunch with John tomorrow at noon").
+            calendar_id: Calendar ID (default "primary").
+            send_notifications: Whether to send email notifications.
+
+        Returns:
+            Created event data.
+        """
+        try:
+            return (
+                self.service.events()
+                .quickAdd(
+                    calendarId=calendar_id,
+                    text=text,
+                    sendUpdates="all" if send_notifications else "none",
+                )
+                .execute()
+            )
+        except HttpError as e:
+            logger.error(f"Error creating quick event: {e}")
+            raise
+
     @staticmethod
     def parse_event(event: dict) -> dict[str, Any]:
         """Parse a Calendar event into a structured format.

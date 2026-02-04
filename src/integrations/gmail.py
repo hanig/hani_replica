@@ -184,6 +184,36 @@ class GmailClient:
             logger.error(f"Error listing labels: {e}")
             return []
 
+    def _build_message(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        cc: str | None = None,
+        bcc: str | None = None,
+    ) -> str:
+        """Build an email message and return base64-encoded raw format.
+
+        Args:
+            to: Recipient email address.
+            subject: Email subject.
+            body: Email body (plain text).
+            cc: CC recipients (comma-separated).
+            bcc: BCC recipients (comma-separated).
+
+        Returns:
+            Base64 URL-safe encoded message string.
+        """
+        message = MIMEText(body)
+        message["to"] = to
+        message["subject"] = subject
+        if cc:
+            message["cc"] = cc
+        if bcc:
+            message["bcc"] = bcc
+
+        return base64.urlsafe_b64encode(message.as_bytes()).decode()
+
     def create_draft(
         self,
         to: str,
@@ -206,16 +236,7 @@ class GmailClient:
         Returns:
             Created draft data.
         """
-        message = MIMEText(body)
-        message["to"] = to
-        message["subject"] = subject
-        if cc:
-            message["cc"] = cc
-        if bcc:
-            message["bcc"] = bcc
-
-        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-
+        raw = self._build_message(to, subject, body, cc, bcc)
         draft_body = {"message": {"raw": raw}}
 
         if reply_to_message_id:
@@ -233,6 +254,48 @@ class GmailClient:
             )
         except HttpError as e:
             logger.error(f"Error creating draft: {e}")
+            raise
+
+    def send_message(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        cc: str | None = None,
+        bcc: str | None = None,
+        reply_to_message_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Send an email.
+
+        Args:
+            to: Recipient email address.
+            subject: Email subject.
+            body: Email body (plain text).
+            cc: CC recipients (comma-separated).
+            bcc: BCC recipients (comma-separated).
+            reply_to_message_id: Message ID to reply to (will add to same thread).
+
+        Returns:
+            Sent message data including id and threadId.
+        """
+        raw = self._build_message(to, subject, body, cc, bcc)
+        message_body: dict[str, Any] = {"raw": raw}
+
+        if reply_to_message_id:
+            # Get the original message to get thread ID
+            original = self.get_message(reply_to_message_id, format="metadata")
+            if original:
+                message_body["threadId"] = original.get("threadId")
+
+        try:
+            return (
+                self.service.users()
+                .messages()
+                .send(userId="me", body=message_body)
+                .execute()
+            )
+        except HttpError as e:
+            logger.error(f"Error sending message: {e}")
             raise
 
     def list_history(

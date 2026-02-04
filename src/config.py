@@ -67,9 +67,11 @@ GOOGLE_CLIENT_SECRET = get_env("GOOGLE_CLIENT_SECRET")
 # Google API scopes
 GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.compose",  # For creating drafts
+    "https://www.googleapis.com/auth/gmail.send",  # For sending emails
     "https://www.googleapis.com/auth/drive.readonly",
-    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/drive.file",  # For Docs comments on files created/opened by app
+    "https://www.googleapis.com/auth/calendar",  # Full calendar access (read/write)
+    "https://www.googleapis.com/auth/documents",  # For Docs API access
 ]
 
 
