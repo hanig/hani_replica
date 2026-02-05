@@ -328,6 +328,18 @@ class ProactiveSettingsStore:
             )
             return cursor.rowcount
 
+    def has_any_settings(self) -> bool:
+        """Check if any users have saved settings.
+
+        Returns:
+            True if at least one user has settings, False otherwise.
+        """
+        with self._connection() as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM proactive_settings"
+            ).fetchone()[0]
+            return count > 0
+
     def get_stats(self) -> dict[str, Any]:
         """Get statistics about proactive settings.
 

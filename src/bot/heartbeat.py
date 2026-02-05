@@ -86,8 +86,8 @@ class HeartbeatManager:
         # Get users with calendar reminders enabled
         users = self.settings_store.get_all_enabled_users("calendar_reminders")
 
-        if not users:
-            # If no users have settings, check for authorized users
+        if not users and not self.settings_store.has_any_settings():
+            # Only use defaults if no users have configured settings at all
             users = [
                 UserProactiveSettings(user_id=uid)
                 for uid in SLACK_AUTHORIZED_USERS
@@ -446,8 +446,8 @@ class HeartbeatManager:
 
         users = self.settings_store.get_all_enabled_users("daily_briefing")
 
-        if not users:
-            # Send to all authorized users if no settings configured
+        if not users and not self.settings_store.has_any_settings():
+            # Only use defaults if no users have configured settings at all
             users = [
                 UserProactiveSettings(user_id=uid)
                 for uid in SLACK_AUTHORIZED_USERS
