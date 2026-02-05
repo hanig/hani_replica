@@ -256,6 +256,7 @@ Output includes:
 - Today's calendar events (merged from all accounts)
 - Unread email counts per account
 - Open GitHub PRs and assigned issues
+- Todoist overdue tasks
 - Available time slots
 
 ### Start the Slack Bot
@@ -444,7 +445,7 @@ hani_replica/
 │   └── audit.db                  # Security audit log
 ├── logs/                         # Log files (gitignored)
 ├── credentials/                  # OAuth tokens (gitignored)
-└── tests/                        # Test suite (359 tests)
+└── tests/                        # Test suite (357 tests)
 ```
 
 ## Automation (macOS)
