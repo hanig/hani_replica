@@ -433,6 +433,18 @@ def format_briefing(briefing: dict) -> dict[str, Any]:
         "text": {"type": "mrkdwn", "text": github_text},
     })
 
+    # Todoist overdue tasks section
+    overdue_tasks = briefing.get("overdue_tasks", [])
+    overdue_text = f"*:white_check_mark: Todoist Overdue:* {len(overdue_tasks)} tasks"
+    if overdue_tasks:
+        first_tasks = [t.get("content", "Task") for t in overdue_tasks[:3]]
+        overdue_text += f"\n• {chr(10).join('• ' + t for t in first_tasks)}"
+
+    blocks.append({
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": overdue_text},
+    })
+
     return {
         "text": "Daily Briefing",
         "blocks": blocks,

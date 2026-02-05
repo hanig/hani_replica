@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
@@ -113,6 +114,7 @@ ZOTERO_DEFAULT_COLLECTION = get_env("ZOTERO_DEFAULT_COLLECTION", "GoodarziLab")
 # Authorized Slack users (comma-separated user IDs)
 _authorized_users = get_env("SLACK_AUTHORIZED_USERS", "")
 SLACK_AUTHORIZED_USERS = [u.strip() for u in _authorized_users.split(",") if u.strip()]
+SLACK_ALLOW_ALL_USERS = get_env("SLACK_ALLOW_ALL_USERS", "false").lower() in ("true", "1", "yes")
 
 # OpenAI Configuration
 OPENAI_API_KEY = get_env("OPENAI_API_KEY")
@@ -132,6 +134,9 @@ BOT_MODE = get_env("BOT_MODE", "agent")
 
 # Enable streaming responses (applies to agent and multi_agent modes)
 ENABLE_STREAMING = get_env("ENABLE_STREAMING", "true").lower() in ("true", "1", "yes")
+
+# User timezone (IANA name, e.g., "America/Los_Angeles")
+USER_TIMEZONE = get_env("USER_TIMEZONE", "America/Los_Angeles")
 
 # Minimum interval between Slack message updates (in seconds) to avoid rate limiting
 STREAMING_UPDATE_INTERVAL = float(get_env("STREAMING_UPDATE_INTERVAL", "0.5"))
@@ -162,6 +167,8 @@ RATE_LIMIT_BLOCK_DURATION = int(get_env("RATE_LIMIT_BLOCK_DURATION", "300"))  # 
 ENABLE_AUDIT_LOG = get_env("ENABLE_AUDIT_LOG", "true").lower() in ("true", "1", "yes")
 AUDIT_LOG_PATH = PROJECT_ROOT / get_env("AUDIT_LOG_PATH", "data/audit.db")
 AUDIT_RETENTION_DAYS = int(get_env("AUDIT_RETENTION_DAYS", "90"))
+# Whether to store raw message text in audit logs
+AUDIT_LOG_MESSAGES = get_env("AUDIT_LOG_MESSAGES", "false").lower() in ("true", "1", "yes")
 
 # Ensure required directories exist
 DATA_DIR = PROJECT_ROOT / "data"
@@ -175,6 +182,14 @@ def ensure_directories() -> None:
         directory.mkdir(parents=True, exist_ok=True)
 
 
+def get_user_timezone() -> ZoneInfo:
+    """Get configured user timezone, defaulting to UTC if invalid."""
+    try:
+        return ZoneInfo(USER_TIMEZONE)
+    except Exception:
+        return ZoneInfo("UTC")
+
+
 def get_config() -> dict[str, Any]:
     """Return all configuration as a dictionary (excluding secrets)."""
     return {
@@ -186,11 +201,13 @@ def get_config() -> dict[str, Any]:
         "github_username": GITHUB_USERNAME,
         "github_org": GITHUB_ORG,
         "slack_workspace": SLACK_WORKSPACE,
+        "slack_allow_all_users": SLACK_ALLOW_ALL_USERS,
         "embedding_model": EMBEDDING_MODEL,
         "intent_model": INTENT_MODEL,
         "agent_model": AGENT_MODEL,
         "bot_mode": BOT_MODE,
         "enable_streaming": ENABLE_STREAMING,
+        "user_timezone": USER_TIMEZONE,
         "streaming_update_interval": STREAMING_UPDATE_INTERVAL,
         "knowledge_graph_db": str(KNOWLEDGE_GRAPH_DB),
         "chroma_db_path": str(CHROMA_DB_PATH),
@@ -201,6 +218,7 @@ def get_config() -> dict[str, Any]:
         "rate_limit_requests": RATE_LIMIT_REQUESTS,
         "rate_limit_window": RATE_LIMIT_WINDOW,
         "enable_audit_log": ENABLE_AUDIT_LOG,
+        "audit_log_messages": AUDIT_LOG_MESSAGES,
         "audit_retention_days": AUDIT_RETENTION_DAYS,
     }
 

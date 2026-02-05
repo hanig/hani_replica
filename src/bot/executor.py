@@ -404,12 +404,14 @@ class ToolExecutor:
 
     def _execute_get_daily_briefing(self, args: dict) -> ToolResult:
         """Get daily briefing."""
+        from ..config import get_user_timezone
         briefing = {
-            "date": datetime.now(timezone.utc).strftime("%A, %B %d, %Y"),
+            "date": datetime.now(get_user_timezone()).strftime("%A, %B %d, %Y"),
             "events": [],
             "unread_counts": {},
             "open_prs": [],
             "open_issues": [],
+            "overdue_tasks": [],
         }
 
         try:
@@ -431,6 +433,11 @@ class ToolExecutor:
             briefing["open_issues"] = self.github_client.get_my_issues(state="open", max_results=10)
         except Exception as e:
             logger.warning(f"Error getting issues: {e}")
+
+        try:
+            briefing["overdue_tasks"] = self.todoist_client.list_tasks(filter="overdue")
+        except Exception as e:
+            logger.warning(f"Error getting Todoist overdue tasks: {e}")
 
         return ToolResult(data=briefing)
 

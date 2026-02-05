@@ -12,7 +12,7 @@ A personal knowledge graph system that aggregates data from multiple Google acco
 - **Knowledge Graph**: SQLite-based storage of entities (people, repos, files) and content with relationship tracking
 - **Semantic Search**: OpenAI embeddings (text-embedding-3-large) with ChromaDB vector store for intelligent content retrieval
 - **Slack Bot**: Interactive assistant using Socket Mode (no public URL required)
-- **Daily Briefings**: Aggregated calendar, email counts, and GitHub activity summaries
+- **Daily Briefings**: Aggregated calendar, email counts, GitHub activity, and Todoist overdue tasks
 
 ### Advanced Agent Features
 - **Natural Conversation**: Chat naturally without triggering tool searches - greetings, questions about the bot, and general conversation are handled intelligently
@@ -158,12 +158,20 @@ SLACK_WORKSPACE=your_workspace
 # Authorized Slack User IDs (comma-separated)
 # Find your ID: Click profile → More → Copy member ID
 SLACK_AUTHORIZED_USERS=U12345678
+# Set to true to allow all users if no allowlist is configured (default: false)
+SLACK_ALLOW_ALL_USERS=false
+
+# User timezone (IANA name, default: America/Los_Angeles)
+USER_TIMEZONE=America/Los_Angeles
 
 # OpenAI API Key (for embeddings)
 OPENAI_API_KEY=sk-xxxxx
 
 # Anthropic API Key (for intent classification and agents)
 ANTHROPIC_API_KEY=sk-ant-xxxxx
+
+# Todoist API Key (for tasks and overdue items in briefings)
+TODOIST_API_KEY=xxxxx
 
 # Zotero API (optional - for paper management)
 # Get API key at: https://www.zotero.org/settings/keys
@@ -192,6 +200,7 @@ RATE_LIMIT_BLOCK_DURATION=300    # Block duration when limit exceeded
 ENABLE_AUDIT_LOG=true
 AUDIT_LOG_PATH=data/audit.db
 AUDIT_RETENTION_DAYS=90
+AUDIT_LOG_MESSAGES=false  # Store raw message text in audit logs
 ```
 
 ### Google Account Authentication

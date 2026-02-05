@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from slack_bolt import App
 
-from ..config import SLACK_AUTHORIZED_USERS, BOT_MODE, ENABLE_STREAMING, STREAMING_UPDATE_INTERVAL
+from ..config import SLACK_AUTHORIZED_USERS, SLACK_ALLOW_ALL_USERS, BOT_MODE, ENABLE_STREAMING, STREAMING_UPDATE_INTERVAL
 from .conversation import ConversationManager
 from .formatters import format_error_message, format_help_message, markdown_to_slack
 from .intent_router import IntentRouter, Intent
@@ -119,6 +119,12 @@ def register_event_handlers(
     # Initialize security and audit
     security_guard = get_security_guard()
     audit_logger = get_audit_logger()
+    try:
+        auth_response = app.client.auth_test()
+        bot_user_id = auth_response.get("user_id")
+    except Exception as e:
+        logger.warning(f"Failed to cache bot user id: {e}")
+        bot_user_id = None
 
     def _handle_message(event: dict, say, client, is_dm: bool) -> None:
         """Common message handling logic."""
@@ -169,7 +175,7 @@ def register_event_handlers(
             return
 
         # Strip bot mention from text
-        text = _strip_bot_mention(text, client)
+        text = _strip_bot_mention(text, client, bot_user_id=bot_user_id)
 
         if not text.strip():
             say(text=format_help_message(), thread_ts=thread_ts)
@@ -513,7 +519,13 @@ def _handle_with_agent_streaming(
         stream_gen = agent_executor.run_streaming(message=text, context=context)
         final_result = None
 
-        for event in stream_gen:
+        while True:
+            try:
+                event = next(stream_gen)
+            except StopIteration as e:
+                final_result = e.value
+                break
+
             try:
                 if event.event_type == StreamEventType.TEXT_DELTA:
                     # Accumulate text chunks
@@ -562,12 +574,6 @@ def _handle_with_agent_streaming(
 
             except Exception as e:
                 logger.warning(f"Error processing stream event: {e}")
-
-        # Get final result from generator
-        try:
-            final_result = stream_gen.send(None)
-        except StopIteration as e:
-            final_result = e.value
 
         if final_result:
             # Ensure final message is updated
@@ -689,7 +695,13 @@ def _handle_with_multi_agent_streaming(
         stream_gen = orchestrator.run_streaming(message=text, context=context)
         final_result = None
 
-        for event in stream_gen:
+        while True:
+            try:
+                event = next(stream_gen)
+            except StopIteration as e:
+                final_result = e.value
+                break
+
             try:
                 if event.event_type == "text_delta":
                     accumulated_text += event.data
@@ -729,12 +741,6 @@ def _handle_with_multi_agent_streaming(
 
             except Exception as e:
                 logger.warning(f"Error processing stream event: {e}")
-
-        # Get final result
-        try:
-            final_result = stream_gen.send(None)
-        except StopIteration as e:
-            final_result = e.value
 
         if final_result:
             final_text = final_result.response
@@ -793,22 +799,24 @@ def _update_message_safe(client, channel_id: str, message_ts: str, text: str) ->
 
 def _is_authorized(user_id: str) -> bool:
     """Check if a user is authorized to use the bot."""
-    # If no authorized users configured, allow all
-    if not SLACK_AUTHORIZED_USERS:
+    if SLACK_ALLOW_ALL_USERS:
         return True
+    if not SLACK_AUTHORIZED_USERS:
+        logger.warning("SLACK_AUTHORIZED_USERS is empty; denying access by default.")
+        return False
     return user_id in SLACK_AUTHORIZED_USERS
 
 
-def _strip_bot_mention(text: str, client) -> str:
+def _strip_bot_mention(text: str, client, bot_user_id: str | None = None) -> str:
     """Remove bot mention from message text."""
-    # Get bot user ID
-    try:
-        auth_response = client.auth_test()
-        bot_user_id = auth_response.get("user_id", "")
-        # Remove <@BOT_ID> pattern
+    if not bot_user_id:
+        try:
+            auth_response = client.auth_test()
+            bot_user_id = auth_response.get("user_id", "")
+        except Exception:
+            bot_user_id = ""
+    if bot_user_id:
         text = re.sub(f"<@{bot_user_id}>", "", text)
-    except Exception:
-        pass
     return text.strip()
 
 

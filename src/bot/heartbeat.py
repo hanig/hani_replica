@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
-from ..config import SLACK_AUTHORIZED_USERS
+from ..config import SLACK_AUTHORIZED_USERS, get_user_timezone
 from .formatters import format_briefing, format_calendar_events
 from .proactive_settings import ProactiveSettingsStore, UserProactiveSettings
 
@@ -45,6 +45,7 @@ class HeartbeatManager:
         # Lazy-loaded integrations
         self._multi_google: "MultiGoogleManager | None" = None
         self._github_client: "GitHubClient | None" = None
+        self._todoist_client = None
 
         # Track recently sent notifications to avoid duplicates
         self._recent_reminders: set[str] = set()
@@ -64,6 +65,14 @@ class HeartbeatManager:
             from ..integrations.github_client import GitHubClient
             self._github_client = GitHubClient()
         return self._github_client
+
+    @property
+    def todoist_client(self):
+        """Lazy load Todoist client."""
+        if self._todoist_client is None:
+            from ..integrations.todoist_client import TodoistClient
+            self._todoist_client = TodoistClient()
+        return self._todoist_client
 
     def check_calendar_reminders(self) -> int:
         """Check for upcoming meetings and send reminders.
@@ -540,11 +549,12 @@ class HeartbeatManager:
             Dictionary with briefing data.
         """
         briefing = {
-            "date": datetime.now(timezone.utc).strftime("%A, %B %d, %Y"),
+            "date": datetime.now(get_user_timezone()).strftime("%A, %B %d, %Y"),
             "events": [],
             "unread_counts": {},
             "open_prs": [],
             "open_issues": [],
+            "overdue_tasks": [],
         }
 
         # Get today's calendar events
@@ -569,6 +579,12 @@ class HeartbeatManager:
             briefing["open_issues"] = self.github_client.get_my_issues(state="open", max_results=10)
         except Exception as e:
             logger.warning(f"Error getting issues for briefing: {e}")
+
+        # Get Todoist overdue tasks
+        try:
+            briefing["overdue_tasks"] = self.todoist_client.list_tasks(filter="overdue")
+        except Exception as e:
+            logger.warning(f"Error getting Todoist overdue tasks for briefing: {e}")
 
         return briefing
 

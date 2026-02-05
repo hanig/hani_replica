@@ -242,6 +242,13 @@ class IntentRouter:
         if any(w in text_lower for w in ["calendar", "schedule", "meeting", "event"]):
             return Intent(intent="calendar_check", entities=self._extract_date(text))
 
+        # Date-only questions (e.g., "What's happening today?")
+        date_entities = self._extract_date(text)
+        if date_entities and any(
+            w in text_lower for w in ["what's", "whats", "what is", "happening", "on "]
+        ):
+            return Intent(intent="calendar_check", entities=date_entities)
+
         # GitHub keywords
         if any(w in text_lower for w in ["github", "repo", "issue", "pr", "pull request", "commit"]):
             if any(w in text_lower for w in ["create", "new", "open"]) and "issue" in text_lower:
@@ -261,6 +268,8 @@ class IntentRouter:
         # Default to chat (not search) for short/unclear messages
         # Only use search as default for longer, query-like messages
         if len(text.split()) <= 3:
+            if date_entities:
+                return Intent(intent="calendar_check", entities=date_entities, confidence=0.6)
             return Intent(intent="chat", entities={"message": text}, confidence=0.5)
 
         # Default to search with date extraction for longer messages

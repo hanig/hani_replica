@@ -7,6 +7,7 @@ from typing import Any
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+from ..config import get_user_timezone
 from .google_auth import get_credentials
 
 logger = logging.getLogger(__name__)
@@ -126,7 +127,8 @@ class CalendarClient:
         Returns:
             List of events for today.
         """
-        now = datetime.now(timezone.utc)
+        tz = get_user_timezone()
+        now = datetime.now(tz)
         start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end_of_day = start_of_day + timedelta(days=1)
 
@@ -161,9 +163,12 @@ class CalendarClient:
         Returns:
             List of events for the specified date.
         """
-        start_of_day = date.replace(hour=0, minute=0, second=0, microsecond=0)
-        if start_of_day.tzinfo is None:
-            start_of_day = start_of_day.replace(tzinfo=timezone.utc)
+        tz = get_user_timezone()
+        if date.tzinfo is None:
+            date = date.replace(tzinfo=tz)
+        start_of_day = date.astimezone(tz).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
         end_of_day = start_of_day + timedelta(days=1)
 
         events = []
@@ -493,8 +498,8 @@ class CalendarClient:
         end = event.get("end", {})
 
         if "dateTime" in start:
-            result["start"] = datetime.fromisoformat(start["dateTime"])
-            result["end"] = datetime.fromisoformat(end.get("dateTime", start["dateTime"]))
+            result["start"] = _parse_rfc3339(start["dateTime"])
+            result["end"] = _parse_rfc3339(end.get("dateTime", start["dateTime"]))
             result["is_all_day"] = False
         elif "date" in start:
             # All-day events: parse as date and add UTC timezone
@@ -535,3 +540,10 @@ class CalendarClient:
                     break
 
         return result
+
+
+def _parse_rfc3339(value: str) -> datetime:
+    """Parse RFC3339 with optional 'Z' suffix."""
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+    return datetime.fromisoformat(value)

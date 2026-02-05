@@ -15,6 +15,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Generator
 
+from ..config import PROJECT_ROOT, AUDIT_LOG_MESSAGES
+
 logger = logging.getLogger(__name__)
 
 
@@ -108,7 +110,6 @@ class AuditLogger:
 
         if enable_db:
             if db_path is None:
-                from ..config import PROJECT_ROOT
                 db_path = PROJECT_ROOT / "data" / "audit.db"
 
             self.db_path = Path(db_path)
@@ -236,6 +237,7 @@ class AuditLogger:
             thread_ts: Thread timestamp if in thread.
             is_mention: Whether this was an @mention.
         """
+        safe_message = message if AUDIT_LOG_MESSAGES else "[redacted]"
         self.log(AuditEvent(
             event_type=(
                 AuditEventType.MENTION_RECEIVED if is_mention
@@ -245,7 +247,7 @@ class AuditLogger:
             user_id=user_id,
             channel_id=channel_id,
             thread_ts=thread_ts,
-            message=message,
+            message=safe_message,
         ))
 
     def log_message_sent(
@@ -263,13 +265,14 @@ class AuditLogger:
             thread_ts: Thread timestamp if in thread.
             user_id: User message was sent to (if DM).
         """
+        safe_message = message if AUDIT_LOG_MESSAGES else "[redacted]"
         self.log(AuditEvent(
             event_type=AuditEventType.MESSAGE_SENT,
             timestamp=datetime.now(),
             user_id=user_id,
             channel_id=channel_id,
             thread_ts=thread_ts,
-            message=message,
+            message=safe_message,
         ))
 
     def log_tool_execution(

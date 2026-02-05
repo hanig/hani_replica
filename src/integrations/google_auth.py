@@ -135,6 +135,11 @@ def _save_credentials(account: str, creds: Credentials) -> None:
     with open(token_path, "w") as f:
         f.write(creds.to_json())
 
+    try:
+        token_path.chmod(0o600)
+    except Exception:
+        logger.warning(f"Failed to set permissions on {token_path}")
+
     logger.debug(f"Saved credentials to {token_path}")
 
 

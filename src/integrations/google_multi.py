@@ -2,10 +2,10 @@
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 
-from ..config import GOOGLE_ACCOUNTS, GOOGLE_EMAILS, GOOGLE_TIER1, GOOGLE_TIER2
+from ..config import GOOGLE_ACCOUNTS, GOOGLE_EMAILS, GOOGLE_TIER1, GOOGLE_TIER2, get_user_timezone
 from .gcalendar import CalendarClient
 from .gdrive import DriveClient
 from .gmail import GmailClient
@@ -98,6 +98,8 @@ class MultiGoogleManager:
         self, accounts: list[str], query: str, max_results: int
     ) -> list[dict[str, Any]]:
         """Search mail across specific accounts in parallel."""
+        if not accounts:
+            return []
         results = []
 
         with ThreadPoolExecutor(max_workers=len(accounts)) as executor:
@@ -189,6 +191,8 @@ class MultiGoogleManager:
         self, accounts: list[str], query: str, max_results: int
     ) -> list[dict[str, Any]]:
         """Search Drive across specific accounts in parallel."""
+        if not accounts:
+            return []
         results = []
 
         with ThreadPoolExecutor(max_workers=len(accounts)) as executor:
@@ -246,7 +250,7 @@ class MultiGoogleManager:
         Returns:
             List of events with account metadata, sorted by start time.
         """
-        return self.get_all_calendars_for_date(datetime.now(timezone.utc))
+        return self.get_all_calendars_for_date(datetime.now(get_user_timezone()))
 
     def get_all_calendars_for_date(
         self, date: datetime
@@ -259,6 +263,8 @@ class MultiGoogleManager:
         Returns:
             List of events with account metadata, sorted by start time.
         """
+        if not GOOGLE_ACCOUNTS:
+            return []
         all_events = []
 
         with ThreadPoolExecutor(max_workers=len(GOOGLE_ACCOUNTS)) as executor:
@@ -321,6 +327,10 @@ class MultiGoogleManager:
         Returns:
             List of available time slots.
         """
+        tz = get_user_timezone()
+        if date.tzinfo is None:
+            date = date.replace(tzinfo=tz)
+
         # Get all events for the date
         events = self.get_all_calendars_for_date(date)
 
@@ -343,16 +353,12 @@ class MultiGoogleManager:
 
         # Find free slots within working hours
         start_hour, end_hour = working_hours
-        day_start = date.replace(
+        day_start = date.astimezone(tz).replace(
             hour=start_hour, minute=0, second=0, microsecond=0
         )
-        day_end = date.replace(
+        day_end = date.astimezone(tz).replace(
             hour=end_hour, minute=0, second=0, microsecond=0
         )
-
-        if day_start.tzinfo is None:
-            day_start = day_start.replace(tzinfo=timezone.utc)
-            day_end = day_end.replace(tzinfo=timezone.utc)
 
         free_slots = []
         current = day_start
@@ -360,9 +366,11 @@ class MultiGoogleManager:
         for busy_start, busy_end in merged:
             # Ensure timezone-aware comparison
             if busy_start.tzinfo is None:
-                busy_start = busy_start.replace(tzinfo=timezone.utc)
+                busy_start = busy_start.replace(tzinfo=tz)
             if busy_end.tzinfo is None:
-                busy_end = busy_end.replace(tzinfo=timezone.utc)
+                busy_end = busy_end.replace(tzinfo=tz)
+            busy_start = busy_start.astimezone(tz)
+            busy_end = busy_end.astimezone(tz)
 
             if current < busy_start:
                 slot_duration = (busy_start - current).total_seconds() / 60
@@ -392,6 +400,8 @@ class MultiGoogleManager:
         Returns:
             Dictionary mapping account to unread count.
         """
+        if not GOOGLE_ACCOUNTS:
+            return {}
         counts = {}
 
         with ThreadPoolExecutor(max_workers=len(GOOGLE_ACCOUNTS)) as executor:

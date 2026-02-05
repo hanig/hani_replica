@@ -7,6 +7,7 @@ from typing import Any
 from ..conversation import ConversationContext
 from ..formatters import format_briefing
 from ..intent_router import Intent
+from ...config import get_user_timezone
 from .base import BaseHandler
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ class BriefingHandler(BaseHandler):
         """Initialize the briefing handler."""
         self._multi_google = None
         self._github_client = None
+        self._todoist_client = None
 
     @property
     def multi_google(self):
@@ -35,6 +37,14 @@ class BriefingHandler(BaseHandler):
             from ...integrations.github_client import GitHubClient
             self._github_client = GitHubClient()
         return self._github_client
+
+    @property
+    def todoist_client(self):
+        """Lazy load Todoist client."""
+        if self._todoist_client is None:
+            from ...integrations.todoist_client import TodoistClient
+            self._todoist_client = TodoistClient()
+        return self._todoist_client
 
     def handle(self, intent: Intent, context: ConversationContext) -> dict[str, Any]:
         """Handle a briefing intent.
@@ -61,11 +71,12 @@ class BriefingHandler(BaseHandler):
             Dictionary with briefing data.
         """
         briefing = {
-            "date": datetime.now(timezone.utc).strftime("%A, %B %d, %Y"),
+            "date": datetime.now(get_user_timezone()).strftime("%A, %B %d, %Y"),
             "events": [],
             "unread_counts": {},
             "open_prs": [],
             "open_issues": [],
+            "overdue_tasks": [],
         }
 
         # Get today's calendar events
@@ -90,5 +101,11 @@ class BriefingHandler(BaseHandler):
             briefing["open_issues"] = self.github_client.get_my_issues(state="open", max_results=10)
         except Exception as e:
             logger.warning(f"Error getting issues for briefing: {e}")
+
+        # Get Todoist overdue tasks
+        try:
+            briefing["overdue_tasks"] = self.todoist_client.list_tasks(filter="overdue")
+        except Exception as e:
+            logger.warning(f"Error getting Todoist overdue tasks for briefing: {e}")
 
         return briefing

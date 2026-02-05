@@ -299,9 +299,21 @@ class MCPClientManager:
     def reset(cls) -> None:
         """Reset the client instance."""
         if cls._instance:
-            asyncio.get_event_loop().run_until_complete(
-                cls._instance.disconnect_all()
-            )
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                asyncio.run(cls._instance.disconnect_all())
+            else:
+                running = loop.is_running()
+                if running is True:
+                    loop.create_task(cls._instance.disconnect_all())
+                else:
+                    coro = cls._instance.disconnect_all()
+                    try:
+                        loop.run_until_complete(coro)
+                    finally:
+                        if hasattr(coro, "close"):
+                            coro.close()
         cls._instance = None
 
 

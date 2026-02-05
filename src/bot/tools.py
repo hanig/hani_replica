@@ -4,12 +4,13 @@ This module defines all tools available to the agent using Pydantic models.
 These schemas are converted to Claude's tool format for native tool calling.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from ..config import get_user_timezone
 
 class ToolResult(BaseModel):
     """Standard result format for tool execution."""
@@ -429,6 +430,16 @@ def get_tool_schemas() -> list[dict[str, Any]]:
     return schemas
 
 
+def _parse_iso_datetime(value: str) -> datetime | None:
+    """Parse ISO datetime/date, handling 'Z' suffix."""
+    try:
+        if value.endswith("Z"):
+            value = value[:-1] + "+00:00"
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
 def parse_date_reference(date_ref: str) -> datetime:
     """Parse a date reference string into a datetime.
 
@@ -438,7 +449,8 @@ def parse_date_reference(date_ref: str) -> datetime:
     Returns:
         datetime object.
     """
-    now = datetime.now(timezone.utc)
+    tz = get_user_timezone()
+    now = datetime.now(tz)
     date_ref_lower = date_ref.lower().strip()
 
     if date_ref_lower == "today":
@@ -452,7 +464,9 @@ def parse_date_reference(date_ref: str) -> datetime:
     elif date_ref_lower == "this week":
         return now
     else:
-        try:
-            return datetime.fromisoformat(date_ref)
-        except ValueError:
-            return now
+        parsed = _parse_iso_datetime(date_ref)
+        if parsed:
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=tz)
+            return parsed
+        return now
