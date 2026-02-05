@@ -10,7 +10,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from ..config import SLACK_APP_TOKEN, SLACK_BOT_TOKEN, BOT_MODE, ENABLE_STREAMING
+from ..config import SLACK_APP_TOKEN, SLACK_BOT_TOKEN, SLACK_AUTHORIZED_USERS, BOT_MODE, ENABLE_STREAMING
 from .conversation import ConversationManager
 from .event_handlers import register_event_handlers
 from .feedback_loop import FeedbackLoop
@@ -151,12 +151,12 @@ def _setup_proactive_scheduler(
         replace_existing=True,
     )
 
-    # Add daily briefing job (7 AM on weekdays)
+    # Add daily briefing job (runs hourly, checks per-user settings)
     scheduler.add_job(
         heartbeat.send_daily_briefings,
-        CronTrigger(hour=7, minute=0, day_of_week="mon-fri"),
+        CronTrigger(minute=0),  # Run at the top of every hour
         id="daily_briefing",
-        name="Send daily briefings",
+        name="Check daily briefings",
         replace_existing=True,
     )
 
@@ -216,9 +216,33 @@ def run_bot(
         print("Persistent memory is enabled - conversations will survive restarts.")
     if enable_proactive and scheduler:
         print("Proactive features are enabled:")
-        print("  - Calendar reminders (15 min before meetings)")
-        print("  - Important email alerts")
-        print("  - Daily briefings (7 AM weekdays)")
+        # Show actual user settings
+        settings_store = ProactiveSettingsStore()
+        # Get first authorized user's settings for display
+        if SLACK_AUTHORIZED_USERS:
+            user_settings = settings_store.get(SLACK_AUTHORIZED_USERS[0])
+            if user_settings.calendar_reminders_enabled:
+                print(f"  - Calendar reminders ({user_settings.reminder_minutes_before} min before meetings)")
+            else:
+                print("  - Calendar reminders (disabled)")
+            if user_settings.email_alerts_enabled:
+                print("  - Important email alerts")
+            else:
+                print("  - Important email alerts (disabled)")
+            if user_settings.daily_briefing_enabled:
+                days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                day_names = [days[d] for d in user_settings.briefing_days]
+                if len(day_names) == 7:
+                    day_str = "daily"
+                elif day_names == ["Mon", "Tue", "Wed", "Thu", "Fri"]:
+                    day_str = "weekdays"
+                else:
+                    day_str = ", ".join(day_names)
+                print(f"  - Daily briefings ({user_settings.briefing_hour}:{user_settings.briefing_minute:02d} AM {day_str})")
+            else:
+                print("  - Daily briefings (disabled)")
+        else:
+            print("  - Calendar reminders, email alerts, daily briefings (no users configured)")
 
     try:
         # Start the scheduler if enabled

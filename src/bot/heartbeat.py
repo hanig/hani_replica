@@ -425,12 +425,14 @@ class HeartbeatManager:
     def send_daily_briefings(self) -> int:
         """Send daily briefings to users who have them enabled.
 
-        This should be called by a cron job at the appropriate times.
+        This should be called by a scheduler running hourly. It checks each
+        user's configured briefing_hour and briefing_days to determine if
+        a briefing should be sent.
 
         Returns:
             Number of briefings sent.
         """
-        logger.info("Checking for daily briefings to send...")
+        logger.debug("Checking for daily briefings to send...")
         briefings_sent = 0
 
         users = self.settings_store.get_all_enabled_users("daily_briefing")
@@ -443,6 +445,8 @@ class HeartbeatManager:
             ]
 
         today = datetime.now().strftime("%Y-%m-%d")
+        current_hour = datetime.now().hour
+        current_day = datetime.now().weekday()
 
         for settings in users:
             try:
@@ -451,8 +455,11 @@ class HeartbeatManager:
                     continue
 
                 # Check if it's the right day of week
-                current_day = datetime.now().weekday()
                 if current_day not in settings.briefing_days:
+                    continue
+
+                # Check if it's the right hour (allow 1 hour window)
+                if current_hour != settings.briefing_hour:
                     continue
 
                 if self._send_daily_briefing(settings):

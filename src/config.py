@@ -139,6 +139,7 @@ STREAMING_UPDATE_INTERVAL = float(get_env("STREAMING_UPDATE_INTERVAL", "0.5"))
 # Database paths
 KNOWLEDGE_GRAPH_DB = PROJECT_ROOT / get_env("KNOWLEDGE_GRAPH_DB", "data/knowledge_graph.db")
 CHROMA_DB_PATH = PROJECT_ROOT / get_env("CHROMA_DB_PATH", "data/chroma")
+MEM0_CHROMA_PATH = PROJECT_ROOT / get_env("MEM0_CHROMA_PATH", "data/mem0_chroma")
 
 # Logging configuration
 LOG_LEVEL = get_env("LOG_LEVEL", "INFO")

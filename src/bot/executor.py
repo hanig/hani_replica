@@ -797,7 +797,25 @@ class AgentExecutor:
         # Inject user memory context if available
         if self.user_memory:
             try:
+                # General user context
                 user_context = self.user_memory.get_context_summary(context.user_id)
+
+                # Also search for memories relevant to this specific message
+                relevant_memories = self.user_memory.search_memories(
+                    context.user_id,
+                    message[:200],  # First 200 chars of message
+                    limit=3
+                )
+                if relevant_memories and relevant_memories.get("results"):
+                    if user_context:
+                        user_context += "\n\nRelevant past context:"
+                    else:
+                        user_context = "Relevant past context:"
+                    for mem in relevant_memories["results"]:
+                        memory_text = mem.get("memory", "")
+                        if memory_text:
+                            user_context += f"\n- {memory_text}"
+
                 if user_context:
                     system += f"\n\nUser context:\n{user_context}"
             except Exception as e:
@@ -826,6 +844,8 @@ class AgentExecutor:
                 if response.stop_reason == "end_turn":
                     # Extract text response
                     text_response = self._extract_text_response(response)
+                    # Extract memories from conversation
+                    self._extract_memories(context, message, text_response)
                     return ExecutionResult(
                         response=text_response,
                         tool_calls=tool_calls_history,
@@ -846,8 +866,11 @@ class AgentExecutor:
 
                             # Check for RespondToUserTool (special case)
                             if tool_name == "RespondToUserTool":
+                                final_response = tool_input.get("message", "")
+                                # Extract memories from conversation
+                                self._extract_memories(context, message, final_response)
                                 return ExecutionResult(
-                                    response=tool_input.get("message", ""),
+                                    response=final_response,
                                     tool_calls=tool_calls_history,
                                     iterations=iterations,
                                 )
@@ -927,7 +950,25 @@ class AgentExecutor:
         # Inject user memory context if available
         if self.user_memory:
             try:
+                # General user context
                 user_context = self.user_memory.get_context_summary(context.user_id)
+
+                # Also search for memories relevant to this specific message
+                relevant_memories = self.user_memory.search_memories(
+                    context.user_id,
+                    message[:200],  # First 200 chars of message
+                    limit=3
+                )
+                if relevant_memories and relevant_memories.get("results"):
+                    if user_context:
+                        user_context += "\n\nRelevant past context:"
+                    else:
+                        user_context = "Relevant past context:"
+                    for mem in relevant_memories["results"]:
+                        memory_text = mem.get("memory", "")
+                        if memory_text:
+                            user_context += f"\n- {memory_text}"
+
                 if user_context:
                     system += f"\n\nUser context:\n{user_context}"
             except Exception as e:
@@ -1007,6 +1048,8 @@ class AgentExecutor:
                 if response.stop_reason == "end_turn":
                     # Extract final text
                     final_text = self._extract_text_response(response)
+                    # Extract memories from conversation
+                    self._extract_memories(context, message, final_text)
                     yield StreamEvent(
                         event_type=StreamEventType.DONE,
                         data=final_text,
@@ -1033,6 +1076,8 @@ class AgentExecutor:
                             # Check for RespondToUserTool (special case)
                             if tool_name == "RespondToUserTool":
                                 response_text = tool_input.get("message", "")
+                                # Extract memories from conversation
+                                self._extract_memories(context, message, response_text)
                                 yield StreamEvent(
                                     event_type=StreamEventType.DONE,
                                     data=response_text,
@@ -1167,3 +1212,43 @@ class AgentExecutor:
             if content.type == "text":
                 return content.text
         return ""
+
+    def _extract_memories(
+        self,
+        context: "ConversationContext",
+        user_message: str,
+        assistant_response: str,
+    ) -> None:
+        """Extract and store memories from the conversation.
+
+        Uses Mem0 to automatically identify and store relevant memories
+        from the user message and assistant response.
+
+        Args:
+            context: Conversation context.
+            user_message: The user's message.
+            assistant_response: The assistant's response.
+        """
+        if not self.user_memory:
+            return
+
+        try:
+            # Build messages for memory extraction
+            messages = []
+
+            # Include recent history for context (last 10 turns)
+            if context.history:
+                for msg in context.history[-10:]:
+                    role = msg.get("role", "user")
+                    content = msg.get("content", "")
+                    if role in ("user", "assistant") and content:
+                        messages.append({"role": role, "content": content})
+
+            # Add current exchange
+            messages.append({"role": "user", "content": user_message})
+            messages.append({"role": "assistant", "content": assistant_response})
+
+            # Auto-extract memories via Mem0
+            self.user_memory.add_from_conversation(context.user_id, messages)
+        except Exception as e:
+            logger.debug(f"Memory extraction failed: {e}")
