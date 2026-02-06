@@ -26,6 +26,7 @@ from .tools import (
     SearchDriveTool,
     GetCalendarEventsTool,
     CheckAvailabilityTool,
+    CreateCalendarEventTool,
     GetUnreadCountsTool,
     CreateEmailDraftTool,
     SendEmailTool,
@@ -58,6 +59,7 @@ You have access to tools that let you:
 - Search and manage emails across multiple Google accounts
 - Send emails and create drafts
 - Check calendar events and availability
+- Create calendar events and send meeting invites to attendees
 - Search GitHub code, issues, and PRs
 - Create GitHub issues
 - Get and create Todoist tasks, mark tasks complete
@@ -273,6 +275,127 @@ class ToolExecutor:
             "free_slot_count": len(free_slots),
             "free_slots": free_slots,
         })
+
+    def _execute_create_calendar_event(self, args: dict) -> ToolResult:
+        """Create a calendar event."""
+        from datetime import timedelta
+        from ..config import get_user_timezone
+
+        tz = get_user_timezone()
+
+        # Parse date and time
+        start_dt = self._parse_event_datetime(
+            args.get("date", "today"),
+            args.get("time", "12:00"),
+        )
+        duration = args.get("duration_minutes", 60)
+        end_dt = start_dt + timedelta(minutes=duration)
+
+        # Get optional fields
+        attendees = args.get("attendees", [])
+        location = args.get("location", "")
+        description = args.get("description", "")
+        account = args.get("account", "personal")
+
+        # Create the event
+        event = self.multi_google.create_calendar_event(
+            account=account,
+            summary=args["title"],
+            start=start_dt,
+            end=end_dt,
+            description=description or None,
+            attendees=attendees if attendees else None,
+            location=location or None,
+            send_notifications=True,
+        )
+
+        # Build response
+        attendee_msg = ""
+        if attendees:
+            attendee_msg = f" Calendar invites sent to {len(attendees)} attendee(s)."
+
+        return ToolResult(data={
+            "event_id": event.get("id"),
+            "html_link": event.get("htmlLink"),
+            "title": args["title"],
+            "start": start_dt.isoformat(),
+            "end": end_dt.isoformat(),
+            "account": account,
+            "attendees": attendees,
+            "message": f"Created event '{args['title']}' on {start_dt.strftime('%Y-%m-%d')} at {start_dt.strftime('%I:%M %p')}.{attendee_msg}",
+        })
+
+    def _parse_event_datetime(self, date_str: str, time_str: str) -> datetime:
+        """Parse date and time strings into a datetime."""
+        from datetime import timedelta
+        from ..config import get_user_timezone
+
+        tz = get_user_timezone()
+        now = datetime.now(tz)
+
+        # Parse date
+        date_lower = date_str.lower().strip()
+        if date_lower == "today":
+            target_date = now.date()
+        elif date_lower == "tomorrow":
+            target_date = (now + timedelta(days=1)).date()
+        elif date_lower == "yesterday":
+            target_date = (now - timedelta(days=1)).date()
+        else:
+            # Try day names (next occurrence)
+            day_names = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+            if date_lower in day_names:
+                target_weekday = day_names.index(date_lower)
+                days_ahead = target_weekday - now.weekday()
+                if days_ahead <= 0:  # Target day already happened this week
+                    days_ahead += 7
+                target_date = (now + timedelta(days=days_ahead)).date()
+            else:
+                # Try ISO format
+                try:
+                    target_date = datetime.fromisoformat(date_str).date()
+                except ValueError:
+                    target_date = now.date()
+
+        # Parse time
+        time_lower = time_str.lower().strip()
+        hour = 12  # Default to noon
+        minute = 0
+
+        if time_lower == "noon":
+            hour, minute = 12, 0
+        elif time_lower == "midnight":
+            hour, minute = 0, 0
+        elif ":" in time_lower:
+            # Format like "14:00" or "2:30pm"
+            time_part = time_lower.replace("am", "").replace("pm", "").strip()
+            parts = time_part.split(":")
+            hour = int(parts[0])
+            minute = int(parts[1]) if len(parts) > 1 else 0
+            if "pm" in time_lower and hour < 12:
+                hour += 12
+            elif "am" in time_lower and hour == 12:
+                hour = 0
+        else:
+            # Format like "2pm" or "14"
+            time_clean = time_lower.replace("am", "").replace("pm", "").strip()
+            try:
+                hour = int(time_clean)
+                if "pm" in time_lower and hour < 12:
+                    hour += 12
+                elif "am" in time_lower and hour == 12:
+                    hour = 0
+            except ValueError:
+                pass
+
+        return datetime(
+            year=target_date.year,
+            month=target_date.month,
+            day=target_date.day,
+            hour=hour,
+            minute=minute,
+            tzinfo=tz,
+        )
 
     def _execute_get_unread_counts(self, args: dict) -> ToolResult:
         """Get unread email counts."""

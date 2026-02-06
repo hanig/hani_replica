@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from ..actions.calendar_actions import CreateEventAction
 from ..conversation import ConversationContext
 from ..formatters import format_availability, format_calendar_events
 from ..intent_router import Intent
@@ -39,6 +40,8 @@ class CalendarHandler(BaseHandler):
         """
         if intent.intent == "calendar_availability":
             return self._handle_availability(intent, context)
+        elif intent.intent == "calendar_create":
+            return self._handle_create_event(intent, context)
         else:
             return self._handle_calendar_check(intent, context)
 
@@ -105,3 +108,54 @@ class CalendarHandler(BaseHandler):
                 return datetime.fromisoformat(date_ref)
             except ValueError:
                 return now
+
+    def _handle_create_event(
+        self, intent: Intent, context: ConversationContext
+    ) -> dict[str, Any]:
+        """Handle create event intent."""
+        # Extract entities from intent
+        title = intent.entities.get("title", "")
+        date_str = intent.entities.get("date", "")
+        time_str = intent.entities.get("time", "")
+        duration = intent.entities.get("duration", "")
+        attendees = intent.entities.get("attendees", [])
+        location = intent.entities.get("location", "")
+
+        # Parse duration if provided (e.g., "1 hour", "30 minutes")
+        duration_minutes = 60  # Default
+        if duration:
+            duration_lower = duration.lower()
+            if "hour" in duration_lower:
+                try:
+                    hours = int(duration_lower.split()[0])
+                    duration_minutes = hours * 60
+                except (ValueError, IndexError):
+                    pass
+            elif "min" in duration_lower:
+                try:
+                    duration_minutes = int(duration_lower.split()[0])
+                except (ValueError, IndexError):
+                    pass
+
+        # Ensure attendees is a list
+        if isinstance(attendees, str):
+            attendees = [a.strip() for a in attendees.split(",") if a.strip()]
+
+        # Create pending action
+        action = CreateEventAction(
+            title=title,
+            date_str=date_str,
+            time_str=time_str,
+            duration_minutes=duration_minutes,
+            attendees=attendees,
+            location=location,
+        )
+
+        # Check what we need
+        if not action.is_ready():
+            context.pending_action = action
+            return {"text": action.get_next_prompt()}
+
+        # If we have enough info, show confirmation
+        context.pending_action = action
+        return action.get_confirmation_prompt()

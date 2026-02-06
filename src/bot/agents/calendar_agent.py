@@ -15,6 +15,7 @@ CALENDAR_KEYWORDS = {
     "availability", "free", "busy", "slot", "when", "tomorrow",
     "today", "next week", "this week", "morning", "afternoon",
     "evening", "book", "scheduled", "upcoming", "agenda",
+    "create", "invite", "invitee", "attendee",
 }
 
 
@@ -24,6 +25,7 @@ class CalendarAgent(BaseAgent):
     Handles:
     - Checking calendar events for specific dates
     - Finding available time slots
+    - Creating calendar events and sending meeting invites
     - Understanding meeting schedules
     - Date-based queries
     """
@@ -37,6 +39,7 @@ class CalendarAgent(BaseAgent):
         return [
             "GetCalendarEventsTool",
             "CheckAvailabilityTool",
+            "CreateCalendarEventTool",
             "RespondToUserTool",
         ]
 
@@ -52,6 +55,7 @@ Today's date: {current_date}
 CAPABILITIES:
 - Check calendar events for any date (today, tomorrow, specific dates)
 - Find available time slots for scheduling
+- Create calendar events and send meeting invites to attendees
 - Understand meeting patterns and schedules
 - Work with multiple Google calendars (Arc Institute, personal, Tahoe Bio, etc.)
 

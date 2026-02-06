@@ -842,6 +842,7 @@ def _route_message(
         "search": "search",
         "calendar_check": "calendar",
         "calendar_availability": "calendar",
+        "calendar_create": "calendar",
         "email_search": "email",
         "email_draft": "email",
         "github_search": "github",

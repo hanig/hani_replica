@@ -3,6 +3,7 @@
 from .confirmable import ConfirmableAction, PendingAction
 from .github_actions import CreateIssueAction, CommentOnIssueAction
 from .email_actions import CreateDraftAction
+from .calendar_actions import CreateEventAction
 
 __all__ = [
     "ConfirmableAction",
@@ -10,4 +11,5 @@ __all__ = [
     "CreateIssueAction",
     "CommentOnIssueAction",
     "CreateDraftAction",
+    "CreateEventAction",
 ]

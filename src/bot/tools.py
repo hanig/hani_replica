@@ -104,6 +104,38 @@ class CheckAvailabilityTool(BaseModel):
     )
 
 
+class CreateCalendarEventTool(BaseModel):
+    """Create a calendar event and optionally send invites to attendees."""
+
+    title: str = Field(description="Event title/summary")
+    date: str = Field(
+        description="Date for the event: 'today', 'tomorrow', day name (e.g., 'Monday'), or ISO format (YYYY-MM-DD)",
+    )
+    time: str = Field(
+        description="Start time: 'noon', '2pm', '14:00', etc.",
+    )
+    duration_minutes: int = Field(
+        default=60,
+        description="Event duration in minutes (default 60)",
+    )
+    attendees: list[str] = Field(
+        default_factory=list,
+        description="List of attendee email addresses (will receive calendar invites)",
+    )
+    location: str = Field(
+        default="",
+        description="Event location (optional)",
+    )
+    description: str = Field(
+        default="",
+        description="Event description (optional)",
+    )
+    account: str = Field(
+        default="personal",
+        description="Google account to create event in: arc, personal, tahoe, therna, amplify",
+    )
+
+
 # --- Email Tools ---
 
 class GetUnreadCountsTool(BaseModel):
@@ -341,6 +373,7 @@ ALL_TOOLS: list[type[BaseModel]] = [
     SearchDriveTool,
     GetCalendarEventsTool,
     CheckAvailabilityTool,
+    CreateCalendarEventTool,
     GetUnreadCountsTool,
     CreateEmailDraftTool,
     SendEmailTool,
@@ -373,6 +406,7 @@ TOOL_NAME_MAP = {
     "SearchDriveTool": "search_drive",
     "GetCalendarEventsTool": "get_calendar_events",
     "CheckAvailabilityTool": "check_availability",
+    "CreateCalendarEventTool": "create_calendar_event",
     "GetUnreadCountsTool": "get_unread_counts",
     "CreateEmailDraftTool": "create_email_draft",
     "SendEmailTool": "send_email",

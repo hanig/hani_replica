@@ -489,3 +489,43 @@ class MultiGoogleManager:
             cc=cc,
             bcc=bcc,
         )
+
+    def create_calendar_event(
+        self,
+        account: str,
+        summary: str,
+        start: datetime,
+        end: datetime,
+        description: str | None = None,
+        attendees: list[str] | None = None,
+        location: str | None = None,
+        send_notifications: bool = True,
+    ) -> dict[str, Any]:
+        """Create a calendar event in a specific account.
+
+        Args:
+            account: Account to create event in.
+            summary: Event title.
+            start: Event start time.
+            end: Event end time.
+            description: Event description.
+            attendees: List of attendee email addresses (will send invites).
+            location: Event location.
+            send_notifications: Whether to send email notifications to attendees.
+
+        Returns:
+            Created event data.
+        """
+        client = self.get_calendar_client(account)
+        if not client:
+            raise ValueError(f"No Calendar client available for account: {account}")
+
+        return client.create_event(
+            summary=summary,
+            start=start,
+            end=end,
+            description=description,
+            attendees=attendees,
+            location=location,
+            send_notifications=send_notifications,
+        )

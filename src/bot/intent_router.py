@@ -28,6 +28,7 @@ Available intents:
 - search: General semantic search across all data (emails, docs, Slack messages)
 - calendar_check: Check calendar events for a specific date
 - calendar_availability: Find free time slots for scheduling
+- calendar_create: Create a new calendar event (can include attendees to send invites)
 - email_search: Search specifically for emails
 - email_draft: Create a new email draft (never sends)
 - github_search: Search GitHub code, issues, or PRs
@@ -39,9 +40,13 @@ Available intents:
 Entity types to extract:
 - query: Search query text
 - date: Date reference (today, tomorrow, next Monday, 2024-01-15, etc.)
+- time: Time reference (3pm, 14:00, noon, etc.)
+- duration: Duration (1 hour, 30 minutes, etc.)
 - person: Person name or email
+- attendees: List of attendee emails for calendar events
+- location: Location for calendar events
 - repo: GitHub repository name
-- title: Title for issue/email
+- title: Title for issue/email/event
 - body: Body/description text
 - labels: Labels/tags (comma-separated)
 """
@@ -100,6 +105,15 @@ Response: {{"intent": "github_list_prs", "entities": {{}}, "confidence": 0.95}}
 
 User: "Draft an email to john@example.com about the meeting"
 Response: {{"intent": "email_draft", "entities": {{"person": "john@example.com", "query": "meeting"}}, "confidence": 0.85}}
+
+User: "Schedule a meeting with john@example.com tomorrow at 2pm"
+Response: {{"intent": "calendar_create", "entities": {{"title": "meeting", "attendees": ["john@example.com"], "date": "tomorrow", "time": "2pm"}}, "confidence": 0.9}}
+
+User: "Create a calendar event called Team Standup for Monday at 10am"
+Response: {{"intent": "calendar_create", "entities": {{"title": "Team Standup", "date": "Monday", "time": "10am"}}, "confidence": 0.95}}
+
+User: "Add a 1 hour meeting with alice@example.com and bob@example.com on Friday at 3pm in the conference room"
+Response: {{"intent": "calendar_create", "entities": {{"title": "meeting", "attendees": ["alice@example.com", "bob@example.com"], "date": "Friday", "time": "3pm", "duration": "1 hour", "location": "conference room"}}, "confidence": 0.9}}
 
 User: "What did I miss yesterday?"
 Response: {{"intent": "briefing", "entities": {{"date": "yesterday"}}, "confidence": 0.8}}
@@ -238,7 +252,14 @@ class IntentRouter:
         if any(w in text_lower for w in ["free", "available", "availability", "open slot"]):
             return Intent(intent="calendar_availability", entities=self._extract_date(text))
 
-        # Calendar keywords
+        # Calendar create keywords - check for action words first
+        if any(w in text_lower for w in ["schedule", "book", "set up", "create"]):
+            if any(w in text_lower for w in ["meeting", "event", "call", "appointment"]):
+                entities = {"query": text}
+                entities.update(self._extract_date(text))
+                return Intent(intent="calendar_create", entities=entities)
+
+        # Calendar keywords (check/view)
         if any(w in text_lower for w in ["calendar", "schedule", "meeting", "event"]):
             return Intent(intent="calendar_check", entities=self._extract_date(text))
 

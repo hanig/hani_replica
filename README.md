@@ -291,8 +291,8 @@ Single agent with LLM-driven tool calling.
 
 ### Multi-Agent Mode (`multi_agent`)
 Orchestrator routes to specialist agents.
-- **Calendar Agent**: Events, availability, scheduling
-- **Email Agent**: Search, drafts, email analysis
+- **Calendar Agent**: View events, check availability, create events with attendee invites
+- **Email Agent**: Search, drafts, send emails
 - **GitHub Agent**: PRs, issues, repository activity
 - **Research Agent**: Semantic search, briefings
 
@@ -356,6 +356,11 @@ Bot: 🟢 Available slots tomorrow:
      • 8:00 AM - 9:30 AM
      • 12:00 PM - 1:00 PM
      • 4:00 PM - 6:00 PM
+
+You: Create a meeting with alice@company.com tomorrow at 2pm for 30 minutes
+Bot: Created event "Meeting" on 2024-02-04 at 2:00 PM.
+     Calendar invite sent to alice@company.com.
+     https://calendar.google.com/event?eid=xxx
 ```
 
 ## Project Structure
@@ -445,7 +450,7 @@ hani_replica/
 │   └── audit.db                  # Security audit log
 ├── logs/                         # Log files (gitignored)
 ├── credentials/                  # OAuth tokens (gitignored)
-└── tests/                        # Test suite (357 tests)
+└── tests/                        # Test suite (351 tests)
 ```
 
 ## Automation (macOS)
