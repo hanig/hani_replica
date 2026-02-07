@@ -2,7 +2,7 @@
 
 This server exposes the knowledge graph, calendar, email, and search
 capabilities via the Model Context Protocol, allowing Claude Desktop,
-Cursor, and other MCP-compatible tools to access Hani's indexed data.
+Cursor, and other MCP-compatible tools to access indexed data.
 """
 
 import json
@@ -137,7 +137,7 @@ def create_mcp_server() -> Server:
             ),
             Tool(
                 name="search_emails",
-                description="Search emails across all Google accounts with tiered priority (Arc and Personal accounts searched first).",
+                description="Search emails across all Google accounts with tiered priority (primary accounts searched first).",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -152,7 +152,7 @@ def create_mcp_server() -> Server:
                         },
                         "tier1_only": {
                             "type": "boolean",
-                            "description": "Only search primary accounts (Arc, Personal)",
+                            "description": "Only search primary/tier-1 accounts",
                             "default": False,
                         },
                     },

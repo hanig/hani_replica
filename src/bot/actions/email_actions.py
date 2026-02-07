@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .confirmable import PendingAction
+from ...config import PRIMARY_ACCOUNT
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +18,13 @@ class CreateDraftAction(PendingAction):
     subject: str = ""
     body: str = ""
     cc: str = ""
-    account: str = "personal"  # Which account to create draft in
+    account: str = ""  # Which account to create draft in (resolved to PRIMARY_ACCOUNT if empty)
     subject_hint: str = ""  # Hint for generating subject
     _state: str = "to"
+
+    def __post_init__(self):
+        if not self.account:
+            self.account = PRIMARY_ACCOUNT
 
     def is_ready(self) -> bool:
         """Check if we have enough info to create the draft."""

@@ -46,7 +46,7 @@ class CalendarAgent(BaseAgent):
     @property
     def system_prompt(self) -> str:
         """Calendar-focused system prompt."""
-        return """You are a calendar management specialist for Hani's personal assistant.
+        return """You are a calendar management specialist, a personal assistant.
 
 Your expertise is managing calendar events and scheduling across multiple Google accounts.
 

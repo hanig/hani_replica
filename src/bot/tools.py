@@ -10,7 +10,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from ..config import get_user_timezone
+from ..config import get_user_timezone, get_accounts_description, PRIMARY_ACCOUNT, ZOTERO_DEFAULT_COLLECTION
 
 class ToolResult(BaseModel):
     """Standard result format for tool execution."""
@@ -52,12 +52,12 @@ class SearchEmailsTool(BaseModel):
     query: str = Field(description="Gmail search query (supports Gmail search syntax)")
     account: str | None = Field(
         default=None,
-        description="Specific account to search: arc, personal, tahoe, therna, amplify",
+        description=get_accounts_description(),
     )
     max_results: int = Field(default=20, description="Maximum number of results")
     tier1_only: bool = Field(
         default=False,
-        description="Only search primary accounts (Arc, Personal)",
+        description="Only search primary/tier-1 accounts",
     )
 
 
@@ -130,9 +130,9 @@ class CreateCalendarEventTool(BaseModel):
         default="",
         description="Event description (optional)",
     )
-    account: str = Field(
-        default="personal",
-        description="Google account to create event in: arc, personal, tahoe, therna, amplify",
+    account: str | None = Field(
+        default=None,
+        description="Google account to create event in. " + get_accounts_description(),
     )
 
 
@@ -150,9 +150,9 @@ class CreateEmailDraftTool(BaseModel):
     to: str = Field(description="Recipient email address")
     subject: str = Field(description="Email subject line")
     body: str = Field(description="Email body content")
-    account: str = Field(
-        default="arc",
-        description="Account to create draft in: arc, personal, tahoe, therna, amplify",
+    account: str | None = Field(
+        default=None,
+        description="Account to create draft in. " + get_accounts_description(),
     )
 
 
@@ -162,9 +162,9 @@ class SendEmailTool(BaseModel):
     to: str = Field(description="Recipient email address")
     subject: str = Field(description="Email subject line")
     body: str = Field(description="Email body content")
-    account: str = Field(
-        default="arc",
-        description="Account to send from: arc, personal, tahoe, therna, amplify",
+    account: str | None = Field(
+        default=None,
+        description="Account to send from. " + get_accounts_description(),
     )
     cc: str | None = Field(default=None, description="CC recipients (comma-separated)")
     bcc: str | None = Field(default=None, description="BCC recipients (comma-separated)")
@@ -353,7 +353,7 @@ class AddZoteroPaperTool(BaseModel):
         description="DOI (e.g., 10.1038/xxx) or URL to paper"
     )
     collection: str = Field(
-        default="GoodarziLab",
+        default=ZOTERO_DEFAULT_COLLECTION or "",
         description="Collection name to add to",
     )
 

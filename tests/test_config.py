@@ -18,9 +18,7 @@ def test_google_accounts_defined():
     """Test that Google accounts are properly defined."""
     from src.config import GOOGLE_ACCOUNTS, GOOGLE_EMAILS, GOOGLE_TIER1, GOOGLE_TIER2
 
-    assert len(GOOGLE_ACCOUNTS) == 5
-    assert "arc" in GOOGLE_ACCOUNTS
-    assert "personal" in GOOGLE_ACCOUNTS
+    assert len(GOOGLE_ACCOUNTS) >= 1
 
     # All accounts should have emails
     for account in GOOGLE_ACCOUNTS:
@@ -33,10 +31,11 @@ def test_google_accounts_defined():
 
 def test_get_google_token_path():
     """Test token path generation."""
-    from src.config import get_google_token_path
+    from src.config import get_google_token_path, GOOGLE_ACCOUNTS
 
-    path = get_google_token_path("arc")
-    assert path.name == "google_token_arc.json"
+    account = GOOGLE_ACCOUNTS[0]
+    path = get_google_token_path(account)
+    assert path.name == f"google_token_{account}.json"
     assert "credentials" in str(path)
 
 

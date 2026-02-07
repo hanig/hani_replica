@@ -113,7 +113,7 @@ class Orchestrator(BaseAgent):
     @property
     def system_prompt(self) -> str:
         """Orchestrator system prompt for routing decisions."""
-        return """You are Hani's personal AI assistant orchestrator.
+        return """You are a personal AI assistant orchestrator.
 
 Today's date: {current_date}
 
@@ -140,7 +140,7 @@ TONE:
 - Concise but helpful
 - Proactive in offering relevant information
 
-Remember: You're Hani's trusted assistant. Be helpful, accurate, and efficient."""
+Remember: You're a trusted personal assistant. Be helpful, accurate, and efficient."""
 
     @property
     def description(self) -> str:
@@ -300,7 +300,7 @@ Remember: You're Hani's trusted assistant. Be helpful, accurate, and efficient."
         Returns:
             Response string.
         """
-        system = f"""You are Hani's personal AI assistant, powered by Claude.
+        system = f"""You are a personal AI assistant, powered by Claude.
 
 Today's date: {datetime.now().strftime("%Y-%m-%d %A")}
 

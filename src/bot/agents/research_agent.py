@@ -5,6 +5,7 @@ from typing import Any
 
 from .base import BaseAgent, AgentType
 from ..conversation import ConversationContext
+from ...config import ZOTERO_DEFAULT_COLLECTION
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +63,12 @@ class ResearchAgent(BaseAgent):
     @property
     def system_prompt(self) -> str:
         """Research-focused system prompt."""
-        return """You are a research and information retrieval specialist for Hani's personal assistant.
+        _default_collection = ZOTERO_DEFAULT_COLLECTION or "default"
+        return f"""You are a research and information retrieval specialist, a personal assistant.
 
 Your expertise is finding information across the personal knowledge graph.
 
-Today's date: {current_date}
+Today's date: {{current_date}}
 
 KNOWLEDGE GRAPH SOURCES:
 - Emails (indexed from 6 Google accounts)
@@ -109,7 +111,7 @@ ZOTERO PAPERS:
 - Use SearchPapersByTagTool to find papers by tag
 - Use GetZoteroCollectionTool to browse papers in a collection/folder
 - Use GetZoteroPaperTool to get full details including abstract and notes
-- Use AddZoteroPaperTool to add papers by DOI or URL (default collection: GoodarziLab)
+- Use AddZoteroPaperTool to add papers by DOI or URL (default collection: {_default_collection})
 
 GUIDELINES:
 1. Summarize findings concisely

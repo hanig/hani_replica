@@ -109,7 +109,16 @@ TODOIST_API_KEY = get_env("TODOIST_API_KEY")
 ZOTERO_API_KEY = get_env("ZOTERO_API_KEY")
 ZOTERO_USER_ID = get_env("ZOTERO_USER_ID")
 ZOTERO_LIBRARY_TYPE = get_env("ZOTERO_LIBRARY_TYPE", "user")
-ZOTERO_DEFAULT_COLLECTION = get_env("ZOTERO_DEFAULT_COLLECTION", "GoodarziLab")
+ZOTERO_DEFAULT_COLLECTION = get_env("ZOTERO_DEFAULT_COLLECTION", "")
+
+# Default account for create/send operations (first tier1 account)
+PRIMARY_ACCOUNT = GOOGLE_TIER1[0] if GOOGLE_TIER1 else (GOOGLE_ACCOUNTS[0] if GOOGLE_ACCOUNTS else "default")
+
+
+def get_accounts_description() -> str:
+    """Build dynamic account list string for tool descriptions."""
+    return f"Account name ({', '.join(GOOGLE_ACCOUNTS)})" if GOOGLE_ACCOUNTS else "Account name"
+
 
 # Authorized Slack users (comma-separated user IDs)
 _authorized_users = get_env("SLACK_AUTHORIZED_USERS", "")

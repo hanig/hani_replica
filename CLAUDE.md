@@ -36,11 +36,12 @@ hani_replica/
 
 ## Key Configuration
 
-### Google Accounts (6 total)
-- Tier 1 (primary): `arc` (arcinstitute.org), `personal` (gmail.com)
-- Tier 2: `tahoe`, `therna`, `exai`, `amplify`
-
-Tiered search: Tier 1 is searched first, Tier 2 only if no results.
+### Google Accounts
+Configured via environment variables in `.env`:
+- `GOOGLE_ACCOUNTS`: comma-separated list of account names
+- `GOOGLE_TIER1`: primary accounts (searched first)
+- `GOOGLE_TIER2`: secondary accounts (searched only if no tier-1 results)
+- `GOOGLE_EMAILS`: JSON dict mapping account names to email addresses
 
 ### Environment Variables
 All secrets in `.env`:

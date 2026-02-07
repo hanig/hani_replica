@@ -16,9 +16,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # System prompt for conversational responses
-CHAT_SYSTEM_PROMPT = """You are Hani's personal assistant. Be friendly, helpful, and concise.
+CHAT_SYSTEM_PROMPT = """You are a personal assistant. Be friendly, helpful, and concise.
 
-You help Hani with:
+You help with:
 - Searching emails, documents, and Slack messages
 - Checking calendar and finding availability
 - Managing GitHub issues and PRs

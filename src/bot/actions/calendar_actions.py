@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .confirmable import PendingAction
+from ...config import PRIMARY_ACCOUNT
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +22,12 @@ class CreateEventAction(PendingAction):
     attendees: list[str] = field(default_factory=list)
     location: str = ""
     description: str = ""
-    account: str = "personal"  # Which Google account to use
+    account: str = ""  # Which Google account to use (resolved to PRIMARY_ACCOUNT if empty)
     _state: str = "title"  # What we're asking for: title, date, time, attendees, account
+
+    def __post_init__(self):
+        if not self.account:
+            self.account = PRIMARY_ACCOUNT
 
     def is_ready(self) -> bool:
         """Check if we have enough info to create the event."""

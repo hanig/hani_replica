@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 ZOTERO_API_KEY = get_env("ZOTERO_API_KEY")
 ZOTERO_USER_ID = get_env("ZOTERO_USER_ID")
 ZOTERO_LIBRARY_TYPE = get_env("ZOTERO_LIBRARY_TYPE", "user")
-ZOTERO_DEFAULT_COLLECTION = get_env("ZOTERO_DEFAULT_COLLECTION", "GoodarziLab")
+ZOTERO_DEFAULT_COLLECTION = get_env("ZOTERO_DEFAULT_COLLECTION", "")
 
 
 class ZoteroClient:

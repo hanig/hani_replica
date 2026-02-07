@@ -31,36 +31,36 @@ A personal knowledge graph system that aggregates data from multiple Google acco
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Slack Bot                                │
-│  (Socket Mode - DMs and @mentions)                              │
-├─────────────────────────────────────────────────────────────────┤
-│                    Security Layer                                │
-│  Rate Limiting │ Input Sanitization │ Audit Logging             │
-├─────────────────────────────────────────────────────────────────┤
-│                    Bot Mode Router                               │
-│  intent (legacy) │ agent (single) │ multi_agent (specialists)   │
-├─────────────────────────────────────────────────────────────────┤
-│                    Agent Executor                                │
-│  Tool Calling │ Streaming │ Multi-step Execution                │
-├───────────────────────┬─────────────────────────────────────────┤
-│     Orchestrator      │          Specialist Agents               │
-│  (Task Planning)      │  Calendar │ Email │ GitHub │ Research   │
-├───────────────────────┴─────────────────────────────────────────┤
-│                      Tools Layer                                 │
-│  search_emails │ send_email │ create_event │ add_comment │ ...  │
-├─────────────────────────────────────────────────────────────────┤
-│              Query Engine + Semantic Search                      │
-├──────────────────────┬──────────────────────────────────────────┤
-│   Knowledge Graph    │           Vector Store                    │
-│   (SQLite)           │           (ChromaDB)                      │
-├──────────────────────┴──────────────────────────────────────────┤
-│                       Indexers                                   │
-│  Gmail │ Drive │ Calendar │ GitHub │ Slack │ Zotero │ Notion    │
-├─────────────────────────────────────────────────────────────────┤
-│                    Integrations                                  │
-│  Google │ GitHub │ Slack │ Zotero │ Notion │ Todoist            │
-└─────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│                         Slack Bot                             │
+│  (Socket Mode - DMs and @mentions)                            │
+├───────────────────────────────────────────────────────────────┤
+│                      Security Layer                           │
+│  Rate Limiting │ Input Sanitization │ Audit Logging           │
+├───────────────────────────────────────────────────────────────┤
+│                      Bot Mode Router                          │
+│  intent (legacy) │ agent (single) │ multi_agent (specialists) │
+├───────────────────────────────────────────────────────────────┤
+│                      Agent Executor                           │
+│  Tool Calling │ Streaming │ Multi-step Execution              │
+├──────────────────────┬────────────────────────────────────────┤
+│    Orchestrator      │         Specialist Agents              │
+│  (Task Planning)     │  Calendar │ Email │ GitHub │ Research  │
+├──────────────────────┴────────────────────────────────────────┤
+│                       Tools Layer                             │
+│  search_emails │ send_email │ create_event │ add_comment │ .. │
+├───────────────────────────────────────────────────────────────┤
+│              Query Engine + Semantic Search                    │
+├─────────────────────┬─────────────────────────────────────────┤
+│  Knowledge Graph    │          Vector Store                   │
+│  (SQLite)           │          (ChromaDB)                     │
+├─────────────────────┴─────────────────────────────────────────┤
+│                        Indexers                               │
+│  Gmail │ Drive │ Calendar │ GitHub │ Slack │ Zotero │ Notion  │
+├───────────────────────────────────────────────────────────────┤
+│                      Integrations                             │
+│  Google │ GitHub │ Slack │ Zotero │ Notion │ Todoist          │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 ## Requirements
@@ -77,7 +77,7 @@ A personal knowledge graph system that aggregates data from multiple Google acco
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/hanig/hani_replica.git
+   git clone https://github.com/YOUR_USERNAME/hani_replica.git
    cd hani_replica
    ```
 
@@ -459,14 +459,14 @@ Set up launchd jobs for automatic syncing:
 
 **Daily sync at 6 AM:**
 ```bash
-cp docs/com.hani.replica.daily.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.hani.replica.daily.plist
+cp docs/com.replica.daily.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.replica.daily.plist
 ```
 
 **Keep bot running:**
 ```bash
-cp docs/com.hani.replica.bot.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.hani.replica.bot.plist
+cp docs/com.replica.bot.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.replica.bot.plist
 ```
 
 ## Security

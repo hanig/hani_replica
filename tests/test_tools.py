@@ -225,7 +225,7 @@ class TestToolModels:
         assert tool.to == "test@example.com"
         assert tool.subject == "Test Subject"
         assert tool.body == "Test body content"
-        assert tool.account == "arc"  # default
+        assert tool.account is None  # default (resolved at execution time)
 
     def test_get_github_prs_tool_defaults(self):
         """Test GetGitHubPRsTool default values."""

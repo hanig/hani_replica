@@ -5,6 +5,7 @@ from typing import Any
 
 from .base import BaseAgent, AgentType
 from ..conversation import ConversationContext
+from ...config import GITHUB_USERNAME, GITHUB_ORG
 
 logger = logging.getLogger(__name__)
 
@@ -13,8 +14,11 @@ logger = logging.getLogger(__name__)
 GITHUB_KEYWORDS = {
     "github", "git", "repo", "repository", "pr", "prs", "pull", "request",
     "issue", "issues", "commit", "branch", "merge", "code", "review",
-    "goodarzilab", "fork", "clone", "push", "bug", "feature",
+    "fork", "clone", "push", "bug", "feature",
 }
+# Dynamically add org name as keyword if configured
+if GITHUB_ORG:
+    GITHUB_KEYWORDS.add(GITHUB_ORG.lower())
 
 
 class GitHubAgent(BaseAgent):
@@ -44,15 +48,18 @@ class GitHubAgent(BaseAgent):
     @property
     def system_prompt(self) -> str:
         """GitHub-focused system prompt."""
-        return """You are a GitHub specialist for Hani's personal assistant.
+        username_info = GITHUB_USERNAME or "not configured"
+        org_info = GITHUB_ORG or "not configured"
+
+        return f"""You are a GitHub specialist, a personal assistant.
 
 Your expertise is managing GitHub repositories, PRs, and issues.
 
-Today's date: {current_date}
+Today's date: {{current_date}}
 
 CONFIGURATION:
-- Primary username: hanig
-- Primary organization: goodarzilab
+- Primary username: {username_info}
+- Primary organization: {org_info}
 
 CAPABILITIES:
 - List pull requests (open, closed, or all)

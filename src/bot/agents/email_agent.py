@@ -5,6 +5,7 @@ from typing import Any
 
 from .base import BaseAgent, AgentType
 from ..conversation import ConversationContext
+from ...config import GOOGLE_ACCOUNTS, GOOGLE_EMAILS, GOOGLE_TIER1, GOOGLE_TIER2
 
 logger = logging.getLogger(__name__)
 
@@ -45,21 +46,29 @@ class EmailAgent(BaseAgent):
     @property
     def system_prompt(self) -> str:
         """Email-focused system prompt."""
-        return """You are an email management specialist for Hani's personal assistant.
+        # Build dynamic account info
+        tier1_info = ", ".join(
+            f"{a} ({GOOGLE_EMAILS.get(a, '')})" if GOOGLE_EMAILS.get(a) else a
+            for a in GOOGLE_TIER1
+        ) if GOOGLE_TIER1 else "none configured"
+        tier2_info = ", ".join(GOOGLE_TIER2) if GOOGLE_TIER2 else "none configured"
+        account_list = ", ".join(f'"{a}"' for a in GOOGLE_ACCOUNTS) if GOOGLE_ACCOUNTS else "none"
+
+        return f"""You are an email management specialist, a personal assistant.
 
 Your expertise is managing emails across multiple Google accounts.
 
-Today's date: {current_date}
+Today's date: {{current_date}}
 
 ACCOUNTS (in priority order):
-- Tier 1 (searched first): arc (arcinstitute.org), personal (gmail.com)
-- Tier 2: tahoe (tahoebio.ai), therna, amplify
+- Tier 1 (searched first): {tier1_info}
+- Tier 2: {tier2_info}
 
 AVAILABLE TOOLS:
 - SearchEmailsTool: Search emails with Gmail query syntax
 - GetUnreadCountsTool: Check unread counts across all accounts
 - CreateEmailDraftTool: Create email drafts
-- SendEmailTool: Send emails (use account param: "arc", "personal", "tahoe", etc.)
+- SendEmailTool: Send emails (use account param: {account_list})
 - FindPersonTool: Find contacts in the knowledge graph
 - RespondToUserTool: Send your final response to the user
 
@@ -81,9 +90,9 @@ GUIDELINES:
 
 SENDING EMAILS:
 - You CAN send emails using SendEmailTool
-- Set "account" to specify which account to send from (e.g., "personal", "arc")
+- Set "account" to specify which account to send from
 - Always confirm with user before sending
-- Example: SendEmailTool(to="user@example.com", subject="Hello", body="Message", account="personal")"""
+- Example: SendEmailTool(to="user@example.com", subject="Hello", body="Message", account="{GOOGLE_ACCOUNTS[0] if GOOGLE_ACCOUNTS else 'default'}")"""
 
     @property
     def description(self) -> str:

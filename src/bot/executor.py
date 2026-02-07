@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Generator, Iterator
 
 from anthropic import Anthropic
 
-from ..config import ANTHROPIC_API_KEY
+from ..config import ANTHROPIC_API_KEY, PRIMARY_ACCOUNT, ZOTERO_DEFAULT_COLLECTION
 from .tools import (
     ALL_TOOLS,
     TOOL_NAME_MAP,
@@ -52,7 +52,7 @@ MAX_ITERATIONS = 10
 # Model to use for agent
 AGENT_MODEL = "claude-sonnet-4-20250514"
 
-SYSTEM_PROMPT = """You are Hani's personal AI assistant with access to tools for managing emails, calendar, GitHub, Todoist tasks, and searching a personal knowledge graph.
+SYSTEM_PROMPT = """You are a personal AI assistant with access to tools for managing emails, calendar, GitHub, Todoist tasks, and searching a personal knowledge graph.
 
 You have access to tools that let you:
 - Search across all indexed data (emails, documents, calendar events, Slack messages, GitHub)
@@ -295,7 +295,7 @@ class ToolExecutor:
         attendees = args.get("attendees", [])
         location = args.get("location", "")
         description = args.get("description", "")
-        account = args.get("account", "personal")
+        account = args.get("account") or PRIMARY_ACCOUNT
 
         # Create the event
         event = self.multi_google.create_calendar_event(
@@ -408,7 +408,7 @@ class ToolExecutor:
 
     def _execute_create_email_draft(self, args: dict) -> ToolResult:
         """Create email draft."""
-        account = args.get("account", "arc")
+        account = args.get("account") or PRIMARY_ACCOUNT
         draft = self.multi_google.create_draft(
             account=account,
             to=args["to"],
@@ -425,7 +425,7 @@ class ToolExecutor:
 
     def _execute_send_email(self, args: dict) -> ToolResult:
         """Send an email."""
-        account = args.get("account", "arc")
+        account = args.get("account") or PRIMARY_ACCOUNT
         result = self.multi_google.send_email(
             account=account,
             to=args["to"],
@@ -849,7 +849,7 @@ class ToolExecutor:
     def _execute_add_zotero_paper(self, args: dict) -> ToolResult:
         """Add a paper to Zotero by DOI or URL."""
         identifier = args["identifier"].strip()
-        collection = args.get("collection", "GoodarziLab")
+        collection = args.get("collection") or ZOTERO_DEFAULT_COLLECTION
 
         # Determine if it's a DOI or URL
         is_doi = (
