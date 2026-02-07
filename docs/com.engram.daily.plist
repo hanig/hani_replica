@@ -9,11 +9,11 @@
     <array>
         <string>/usr/bin/env</string>
         <string>python3</string>
-        <string>/Users/hani/engram/scripts/daily_delta_sync.py</string>
+        <string>/ABSOLUTE/PATH/TO/engram/scripts/daily_delta_sync.py</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/hani/engram</string>
+    <string>/ABSOLUTE/PATH/TO/engram</string>
 
     <!-- Run daily at 6 AM -->
     <key>StartCalendarInterval</key>
@@ -25,10 +25,10 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/hani/engram/logs/daily_sync.log</string>
+    <string>/ABSOLUTE/PATH/TO/engram/logs/daily_sync.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/hani/engram/logs/daily_sync_error.log</string>
+    <string>/ABSOLUTE/PATH/TO/engram/logs/daily_sync_error.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>
@@ -39,9 +39,10 @@
 </plist>
 <!--
 Installation:
-1. Copy this file to ~/Library/LaunchAgents/
-2. Load with: launchctl load ~/Library/LaunchAgents/com.engram.daily.plist
-3. Check status: launchctl list | grep engram
+1. Replace all /ABSOLUTE/PATH/TO/engram placeholders with your real project path.
+2. Copy this file to ~/Library/LaunchAgents/
+3. Load with: launchctl load ~/Library/LaunchAgents/com.engram.daily.plist
+4. Check status: launchctl list | grep engram
 
 To unload: launchctl unload ~/Library/LaunchAgents/com.engram.daily.plist
 To run manually: launchctl start com.engram.daily

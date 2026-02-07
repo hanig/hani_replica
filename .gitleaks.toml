@@ -1,0 +1,11 @@
+title = "Engram gitleaks config"
+
+[[allowlists]]
+description = "Allow intentional fake secrets used by security tests"
+paths = [
+  '''tests/test_security\.py''',
+]
+regexes = [
+  '''sk-abc123xyz789defghi012jkl345mno''',
+  '''xoxb-123456789-abcdefghij''',
+]
