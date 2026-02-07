@@ -560,7 +560,7 @@ class ToolExecutor:
         try:
             briefing["overdue_tasks"] = self.todoist_client.list_tasks(filter="overdue")
         except Exception as e:
-            logger.warning(f"Error getting Todoist overdue tasks: {e}")
+            logger.error(f"Error getting Todoist overdue tasks: {e}", exc_info=True)
 
         return ToolResult(data=briefing)
 

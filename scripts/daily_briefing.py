@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.integrations.github_client import GitHubClient
 from src.integrations.google_multi import MultiGoogleManager
+from src.config import get_user_timezone
 from src.integrations.todoist_client import TodoistClient
 from src.integrations.slack import SlackClient
 from src.config import SLACK_AUTHORIZED_USERS
@@ -29,7 +30,7 @@ def generate_briefing(date: datetime | None = None) -> str:
         Formatted briefing text.
     """
     if date is None:
-        date = datetime.now(timezone.utc)
+        date = datetime.now(get_user_timezone())
 
     date_str = date.strftime("%A, %B %d, %Y")
     lines = [
@@ -136,11 +137,13 @@ def generate_briefing(date: datetime | None = None) -> str:
         projects = todoist.list_projects()
         project_map = {p["id"]: p["name"] for p in projects}
 
-        # Get tasks due today or overdue
-        all_tasks = todoist.list_tasks()
+        # Get overdue tasks using Todoist's built-in filter
+        overdue = todoist.list_tasks(filter="overdue")
 
-        # Separate by priority and due date
-        overdue = []
+        # Get remaining tasks for today/upcoming categorization
+        all_tasks = todoist.list_tasks()
+        overdue_ids = {t.get("id") for t in overdue}
+
         due_today = []
         upcoming = []
         no_date = []
@@ -148,14 +151,14 @@ def generate_briefing(date: datetime | None = None) -> str:
         today_str = date.strftime("%Y-%m-%d")
 
         for task in all_tasks:
+            if task.get("id") in overdue_ids:
+                continue
             due = task.get("due")
             if due:
-                due_date = due.get("date", "")
-                if due_date < today_str:
-                    overdue.append(task)
-                elif due_date == today_str:
+                due_date = due.get("date") or due.get("datetime", "")[:10] or ""
+                if due_date == today_str:
                     due_today.append(task)
-                else:
+                elif due_date > today_str:
                     upcoming.append(task)
             else:
                 no_date.append(task)
@@ -165,7 +168,8 @@ def generate_briefing(date: datetime | None = None) -> str:
             lines.append(f"  ⚠️  OVERDUE ({len(overdue)}):")
             for task in overdue[:5]:
                 proj = project_map.get(task.get("project_id"), "Inbox")
-                due_str = task.get("due", {}).get("date", "")
+                due_info = task.get("due") or {}
+                due_str = due_info.get("date") or due_info.get("datetime", "")[:10] or ""
                 lines.append(f"    • [{proj}] {task['content'][:35]} (due {due_str})")
             if len(overdue) > 5:
                 lines.append(f"    ... and {len(overdue) - 5} more overdue")
