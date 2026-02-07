@@ -4,6 +4,10 @@ A personal knowledge graph system that aggregates data from multiple Google acco
 
 > Disclaimer: This project is built by a scientist, not a security specialist. Review, harden, and use it at your own discretion, especially before handling sensitive data or deploying in production environments.
 
+## Public Deployment Warning
+
+This project is designed first for personal/local use. Do not expose it publicly or use it in multi-user/production environments without a full security review, least-privilege credentials, network hardening, and strict access controls.
+
 ## Features
 
 ### Core Capabilities
