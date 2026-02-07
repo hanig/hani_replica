@@ -633,6 +633,56 @@ class ZoteroClient:
             if match:
                 return match.group(1)
 
+        # arXiv: arxiv.org/abs/2601.07372 or arxiv.org/pdf/2601.07372
+        if "arxiv.org/" in url:
+            match = re.search(r"arxiv\.org/(?:abs|pdf|html)/(\d+\.\d+)", url)
+            if match:
+                return f"10.48550/arXiv.{match.group(1)}"
+
+        # PubMed: pubmed.ncbi.nlm.nih.gov/12345678
+        if "pubmed.ncbi.nlm.nih.gov/" in url:
+            match = re.search(r"pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", url)
+            if match:
+                pmid = match.group(1)
+                doi = self._resolve_pmid_to_doi(pmid)
+                if doi:
+                    return doi
+
+        # Generic fallback: look for a DOI embedded anywhere in the URL
+        # Covers Wiley, Springer, T&F, ACS, SAGE, Oxford, Frontiers, PLoS, etc.
+        match = re.search(r"(?:^|[/=])(10\.\d{4,}/[^\s&#]+)", url)
+        if match:
+            return match.group(1).rstrip("/")
+
+        return None
+
+    def _resolve_pmid_to_doi(self, pmid: str) -> str | None:
+        """Resolve a PubMed ID to a DOI via the NCBI API.
+
+        Args:
+            pmid: The PubMed ID (numeric string).
+
+        Returns:
+            DOI string or None if not found.
+        """
+        import httpx
+
+        ncbi_url = (
+            "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
+            f"?db=pubmed&id={pmid}&retmode=json"
+        )
+        try:
+            with httpx.Client() as client:
+                response = client.get(ncbi_url, timeout=10.0)
+                if response.status_code == 200:
+                    data = response.json()
+                    article = data.get("result", {}).get(pmid, {})
+                    for id_entry in article.get("articleids", []):
+                        if id_entry.get("idtype") == "doi":
+                            return id_entry["value"]
+        except Exception as e:
+            logger.warning(f"NCBI lookup failed for PMID {pmid}: {e}")
+
         return None
 
     def add_item_by_url(
