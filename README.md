@@ -2,6 +2,8 @@
 
 A personal knowledge graph system that aggregates data from multiple Google accounts, GitHub, Slack, Notion, Todoist, and Zotero, with semantic search and an interactive Slack bot interface powered by intelligent agents.
 
+> Disclaimer: This project is built by a scientist, not a security specialist. Review, harden, and use it at your own discretion, especially before handling sensitive data or deploying in production environments.
+
 ## Features
 
 ### Core Capabilities
