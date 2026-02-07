@@ -10,7 +10,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from ..config import get_user_timezone, get_accounts_description, PRIMARY_ACCOUNT, ZOTERO_DEFAULT_COLLECTION
+from ..config import (
+    ENABLE_DIRECT_EMAIL_SEND,
+    PRIMARY_ACCOUNT,
+    ZOTERO_DEFAULT_COLLECTION,
+    get_accounts_description,
+    get_user_timezone,
+)
 
 class ToolResult(BaseModel):
     """Standard result format for tool execution."""
@@ -157,7 +163,7 @@ class CreateEmailDraftTool(BaseModel):
 
 
 class SendEmailTool(BaseModel):
-    """Send an email immediately. Use with caution - this actually sends the email."""
+    """Send an email immediately. Disabled in production; use CreateEmailDraftTool instead."""
 
     to: str = Field(description="Recipient email address")
     subject: str = Field(description="Email subject line")
@@ -366,38 +372,44 @@ class RespondToUserTool(BaseModel):
     message: str = Field(description="The message to send to the user")
 
 
-# All available tools
-ALL_TOOLS: list[type[BaseModel]] = [
-    SemanticSearchTool,
-    SearchEmailsTool,
-    SearchDriveTool,
-    GetCalendarEventsTool,
-    CheckAvailabilityTool,
-    CreateCalendarEventTool,
-    GetUnreadCountsTool,
-    CreateEmailDraftTool,
-    SendEmailTool,
-    GetGitHubPRsTool,
-    GetGitHubIssuesTool,
-    SearchGitHubCodeTool,
-    CreateGitHubIssueTool,
-    FindPersonTool,
-    GetPersonActivityTool,
-    GetDailyBriefingTool,
-    GetTodoistTasksTool,
-    CreateTodoistTaskTool,
-    CompleteTodoistTaskTool,
-    SearchNotionTool,
-    CreateNotionPageTool,
-    AddNotionCommentTool,
-    SearchZoteroPapersTool,
-    GetZoteroPaperTool,
-    ListRecentPapersTool,
-    SearchPapersByTagTool,
-    GetZoteroCollectionTool,
-    AddZoteroPaperTool,
-    RespondToUserTool,
-]
+def _build_all_tools() -> list[type[BaseModel]]:
+    tools: list[type[BaseModel]] = [
+        SemanticSearchTool,
+        SearchEmailsTool,
+        SearchDriveTool,
+        GetCalendarEventsTool,
+        CheckAvailabilityTool,
+        CreateCalendarEventTool,
+        GetUnreadCountsTool,
+        CreateEmailDraftTool,
+        GetGitHubPRsTool,
+        GetGitHubIssuesTool,
+        SearchGitHubCodeTool,
+        CreateGitHubIssueTool,
+        FindPersonTool,
+        GetPersonActivityTool,
+        GetDailyBriefingTool,
+        GetTodoistTasksTool,
+        CreateTodoistTaskTool,
+        CompleteTodoistTaskTool,
+        SearchNotionTool,
+        CreateNotionPageTool,
+        AddNotionCommentTool,
+        SearchZoteroPapersTool,
+        GetZoteroPaperTool,
+        ListRecentPapersTool,
+        SearchPapersByTagTool,
+        GetZoteroCollectionTool,
+        AddZoteroPaperTool,
+        RespondToUserTool,
+    ]
+    if ENABLE_DIRECT_EMAIL_SEND:
+        tools.insert(tools.index(CreateEmailDraftTool) + 1, SendEmailTool)
+    return tools
+
+
+# All available tools (built once at import time from config flags)
+ALL_TOOLS: list[type[BaseModel]] = _build_all_tools()
 
 # Map tool class names to handler functions (set up in executor)
 TOOL_NAME_MAP = {
@@ -409,6 +421,7 @@ TOOL_NAME_MAP = {
     "CreateCalendarEventTool": "create_calendar_event",
     "GetUnreadCountsTool": "get_unread_counts",
     "CreateEmailDraftTool": "create_email_draft",
+    # Kept for defensive handling if older prompts/caches reference it.
     "SendEmailTool": "send_email",
     "GetGitHubPRsTool": "get_github_prs",
     "GetGitHubIssuesTool": "get_github_issues",

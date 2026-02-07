@@ -9,11 +9,11 @@
     <array>
         <string>/usr/bin/env</string>
         <string>python3</string>
-        <string>/path/to/engram/scripts/daily_delta_sync.py</string>
+        <string>/Users/hani/engram/scripts/daily_delta_sync.py</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/path/to/engram</string>
+    <string>/Users/hani/engram</string>
 
     <!-- Run daily at 6 AM -->
     <key>StartCalendarInterval</key>
@@ -25,10 +25,10 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/path/to/engram/logs/daily_sync.log</string>
+    <string>/Users/hani/engram/logs/daily_sync.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/path/to/engram/logs/daily_sync_error.log</string>
+    <string>/Users/hani/engram/logs/daily_sync_error.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>

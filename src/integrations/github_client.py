@@ -294,6 +294,24 @@ class GitHubClient:
             logger.error(f"Error searching code: {e}")
             return []
 
+    def search_code_in_repo(
+        self,
+        repo: str,
+        query: str,
+        max_results: int = 30,
+    ) -> list[dict[str, Any]]:
+        """Search code in a specific repository.
+
+        Args:
+            repo: Repository in format owner/repo (or repo if org is configured).
+            query: Search query text.
+            max_results: Maximum number of results.
+
+        Returns:
+            List of code search results.
+        """
+        return self.search_code(query=query, repo=repo, max_results=max_results)
+
     def create_issue(
         self,
         repo_name: str,

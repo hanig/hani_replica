@@ -541,6 +541,43 @@ class ConversationManager:
         user_convos.sort(key=lambda c: c.last_activity, reverse=True)
         return user_convos[:limit]
 
+    def find_pending_action_context(
+        self,
+        user_id: str,
+        channel_id: str,
+        action_id: str | None = None,
+    ) -> ConversationContext | None:
+        """Find an in-memory context with a pending action.
+
+        Args:
+            user_id: Slack user ID.
+            channel_id: Slack channel ID.
+            action_id: Optional pending action ID to match.
+
+        Returns:
+            Matching ConversationContext or None.
+        """
+        self._maybe_cleanup()
+
+        matches = [
+            ctx for ctx in self._conversations.values()
+            if ctx.user_id == user_id and ctx.channel_id == channel_id and ctx.pending_action
+        ]
+        if not matches:
+            return None
+
+        if action_id:
+            exact = [
+                ctx for ctx in matches
+                if getattr(ctx.pending_action, "action_id", "") == action_id
+            ]
+            if exact:
+                exact.sort(key=lambda c: c.last_activity, reverse=True)
+                return exact[0]
+
+        matches.sort(key=lambda c: c.last_activity, reverse=True)
+        return matches[0]
+
     def _make_key(
         self,
         user_id: str,

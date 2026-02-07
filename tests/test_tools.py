@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from src.bot.tools import (
+    ENABLE_DIRECT_EMAIL_SEND,
     ALL_TOOLS,
     TOOL_NAME_MAP,
     ToolResult,
@@ -172,6 +173,15 @@ class TestToolSchemas:
 
         assert "message" in schema["input_schema"]["properties"]
         assert "message" in schema["input_schema"]["required"]
+
+    def test_send_email_tool_not_exposed(self):
+        """Test send-email tool exposure follows feature flag."""
+        schemas = get_tool_schemas()
+        names = {schema["name"] for schema in schemas}
+        if ENABLE_DIRECT_EMAIL_SEND:
+            assert "SendEmailTool" in names
+        else:
+            assert "SendEmailTool" not in names
 
 
 class TestToolModels:

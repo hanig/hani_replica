@@ -6,7 +6,7 @@ A personal knowledge graph system that aggregates data from multiple Google acco
 
 ### Core Capabilities
 - **Multi-Account Google Integration**: Sync Gmail, Google Drive, and Google Calendar from up to 6 accounts with tiered search (primary accounts searched first)
-- **Google Write Capabilities**: Send emails, create/modify calendar events, and comment on Google Docs
+- **Google Write Capabilities**: Create email drafts, create/modify calendar events, and comment on Google Docs
 - **Zotero Integration**: Search papers, add references by DOI/URL with automatic metadata extraction (CrossRef + page scraping)
 - **Notion & Todoist**: Search pages, manage tasks, create content
 - **Knowledge Graph**: SQLite-based storage of entities (people, repos, files) and content with relationship tracking
@@ -21,6 +21,7 @@ A personal knowledge graph system that aggregates data from multiple Google acco
 - **Tool Calling**: LLM-driven tool selection with multi-step execution capabilities
 - **Persistent Memory**: Conversation history and user preferences survive restarts
 - **Proactive Alerts**: Calendar reminders, important email notifications, and daily briefings
+- **Confirmation-Gated Actions**: Sensitive actions use explicit Slack confirmation buttons with action-ID validation
 
 ### Security
 - **Prompt Injection Protection**: Pattern-based detection and sanitization of malicious inputs
@@ -190,6 +191,11 @@ AGENT_MODEL=claude-sonnet-4-20250514
 # Enable streaming responses (applies to agent and multi_agent modes)
 ENABLE_STREAMING=true
 
+# Direct email send behavior
+# false (default): draft-only (recommended)
+# true: SendEmailTool enabled, but still requires explicit Slack confirmation button
+ENABLE_DIRECT_EMAIL_SEND=false
+
 # Security Settings
 SECURITY_LEVEL=moderate          # strict, moderate, or permissive
 RATE_LIMIT_REQUESTS=30           # Max requests per window
@@ -292,7 +298,7 @@ Single agent with LLM-driven tool calling.
 ### Multi-Agent Mode (`multi_agent`)
 Orchestrator routes to specialist agents.
 - **Calendar Agent**: View events, check availability, create events with attendee invites
-- **Email Agent**: Search, drafts, send emails
+- **Email Agent**: Search, drafts, and optional send (feature-flagged)
 - **GitHub Agent**: PRs, issues, repository activity
 - **Research Agent**: Semantic search, briefings
 
@@ -310,7 +316,7 @@ Talk to the bot via DM or @mention in channels:
 | `What's my schedule for tomorrow?` | Show tomorrow's calendar |
 | `When am I free this week?` | Find available time slots |
 | `Search for emails about [topic]` | Semantic search across emails |
-| `Send an email to [person] about [topic]` | Compose and send an email |
+| `Send an email to [person] about [topic]` | Create draft by default, or send via explicit confirmation if enabled |
 | `Create a meeting with [person] tomorrow at 2pm` | Create calendar events |
 | `Find documents about [topic]` | Search Google Drive files |
 | `Show my open PRs` | List your GitHub pull requests |
@@ -332,7 +338,7 @@ Bot: Hi! How can I help you today? I can check your calendar, search
 You: What can you do?
 Bot: I'm your personal assistant with access to:
      • Calendar (6 Google accounts)
-     • Email search and drafts
+     • Email search and drafts (optional send with confirmation)
      • Google Drive documents
      • GitHub repos, PRs, and issues
      • Slack message history
@@ -450,7 +456,7 @@ engram/
 │   └── audit.db                  # Security audit log
 ├── logs/                         # Log files (gitignored)
 ├── credentials/                  # OAuth tokens (gitignored)
-└── tests/                        # Test suite (351 tests)
+└── tests/                        # Test suite (360 tests)
 ```
 
 ## Automation (macOS)
@@ -475,10 +481,12 @@ launchctl load ~/Library/LaunchAgents/com.engram.bot.plist
 - **Credentials**: All tokens and OAuth credentials are stored locally in `credentials/` (gitignored)
 - **Data**: All indexed data stays local in `data/` (gitignored)
 - **Bot Access**: Only Slack users listed in `SLACK_AUTHORIZED_USERS` can interact with the bot
-- **Email Sending**: The bot can send emails but will confirm with you before sending
+- **Email Sending**: Draft-only by default. Set `ENABLE_DIRECT_EMAIL_SEND=true` to enable send, which still requires explicit confirmation.
 - **Calendar Events**: The bot can create/modify events but confirms before making changes
 - **Doc Comments**: The bot can add comments to Google Docs you have access to
 - **GitHub Actions**: Issue creation requires explicit confirmation
+- **Action Integrity**: Confirmation clicks are validated by action ID and thread-aware context lookup to prevent stale/mismatched execution
+- **Confirmation Timeout**: Pending confirmations expire after 5 minutes and must be re-requested
 
 ### Prompt Injection Protection
 The bot includes pattern-based detection for common injection attempts:

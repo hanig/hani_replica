@@ -48,6 +48,8 @@ class MCPClient:
         """Initialize the MCP client."""
         self._servers: dict[str, MCPServerConfig] = {}
         self._sessions: dict[str, ClientSession] = {}
+        self._stdio_contexts: dict[str, Any] = {}
+        self._session_contexts: dict[str, Any] = {}
         self._tools: dict[str, MCPTool] = {}  # tool_name -> MCPTool
 
     def register_server(self, config: MCPServerConfig) -> None:
@@ -96,26 +98,38 @@ class MCPClient:
 
         config = self._servers[server_name]
 
+        if server_name in self._sessions:
+            logger.info(f"MCP server already connected: {server_name}")
+            return True
+
         try:
             server_params = StdioServerParameters(
                 command=config.command,
                 args=config.args or [],
                 env=config.env,
             )
+            stdio_ctx = stdio_client(server_params)
+            read, write = await stdio_ctx.__aenter__()
+            session_ctx = ClientSession(read, write)
+            session = await session_ctx.__aenter__()
+            try:
+                # Initialize the session
+                await session.initialize()
 
-            async with stdio_client(server_params) as (read, write):
-                async with ClientSession(read, write) as session:
-                    # Initialize the session
-                    await session.initialize()
+                # Store contexts and live session
+                self._stdio_contexts[server_name] = stdio_ctx
+                self._session_contexts[server_name] = session_ctx
+                self._sessions[server_name] = session
 
-                    # Store the session
-                    self._sessions[server_name] = session
+                # Discover and cache tools
+                await self._discover_tools(server_name, session)
 
-                    # Discover and cache tools
-                    await self._discover_tools(server_name, session)
-
-                    logger.info(f"Connected to MCP server: {server_name}")
-                    return True
+                logger.info(f"Connected to MCP server: {server_name}")
+                return True
+            except Exception:
+                await session_ctx.__aexit__(None, None, None)
+                await stdio_ctx.__aexit__(None, None, None)
+                raise
 
         except Exception as e:
             logger.error(f"Error connecting to {server_name}: {e}")
@@ -234,8 +248,14 @@ class MCPClient:
         Args:
             server_name: Name of the server.
         """
+        session_ctx = self._session_contexts.pop(server_name, None)
+        stdio_ctx = self._stdio_contexts.pop(server_name, None)
         if server_name in self._sessions:
             del self._sessions[server_name]
+        if session_ctx is not None:
+            await session_ctx.__aexit__(None, None, None)
+        if stdio_ctx is not None:
+            await stdio_ctx.__aexit__(None, None, None)
 
         # Remove tools from this server
         self._tools = {
@@ -247,7 +267,11 @@ class MCPClient:
 
     async def disconnect_all(self) -> None:
         """Disconnect from all MCP servers."""
+        for server_name in list(self._sessions.keys()):
+            await self.disconnect(server_name)
         self._sessions.clear()
+        self._session_contexts.clear()
+        self._stdio_contexts.clear()
         self._tools.clear()
         logger.info("Disconnected from all MCP servers")
 

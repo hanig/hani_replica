@@ -373,6 +373,9 @@ class TestMCPClientIntegration:
         assert result is True
         mock_session.initialize.assert_called_once()
         mock_session.list_tools.assert_called_once()
+        assert "test-server" in client._sessions
+        assert "test-server" in client._stdio_contexts
+        assert "test-server" in client._session_contexts
 
     @pytest.mark.asyncio
     @patch("src.mcp.client.stdio_client")
@@ -383,3 +386,33 @@ class TestMCPClientIntegration:
         result = await client.connect("test-server")
 
         assert result is False
+
+    @pytest.mark.asyncio
+    @patch("src.mcp.client.stdio_client")
+    @patch("src.mcp.client.ClientSession")
+    async def test_disconnect_closes_contexts(
+        self, mock_session_class, mock_stdio_client, client
+    ):
+        """Test disconnect closes session/transport contexts."""
+        # Set up connect mocks
+        mock_session = AsyncMock()
+        mock_session.initialize.return_value = None
+        mock_session.list_tools.return_value = MagicMock(tools=[])
+
+        mock_session_cm = AsyncMock()
+        mock_session_cm.__aenter__.return_value = mock_session
+        mock_session_cm.__aexit__.return_value = None
+        mock_session_class.return_value = mock_session_cm
+
+        mock_stdio_cm = AsyncMock()
+        mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock())
+        mock_stdio_cm.__aexit__.return_value = None
+        mock_stdio_client.return_value = mock_stdio_cm
+
+        assert await client.connect("test-server") is True
+
+        await client.disconnect("test-server")
+
+        mock_session_cm.__aexit__.assert_called_once()
+        mock_stdio_cm.__aexit__.assert_called_once()
+        assert "test-server" not in client._sessions

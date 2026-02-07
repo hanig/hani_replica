@@ -5,7 +5,13 @@ from typing import Any
 
 from .base import BaseAgent, AgentType
 from ..conversation import ConversationContext
-from ...config import GOOGLE_ACCOUNTS, GOOGLE_EMAILS, GOOGLE_TIER1, GOOGLE_TIER2
+from ...config import (
+    ENABLE_DIRECT_EMAIL_SEND,
+    GOOGLE_ACCOUNTS,
+    GOOGLE_EMAILS,
+    GOOGLE_TIER1,
+    GOOGLE_TIER2,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +40,16 @@ class EmailAgent(BaseAgent):
     @property
     def tool_names(self) -> list[str]:
         """Email-specific tools."""
-        return [
+        tools = [
             "SearchEmailsTool",
             "GetUnreadCountsTool",
             "CreateEmailDraftTool",
-            "SendEmailTool",
             "FindPersonTool",  # Useful for resolving contact names
             "RespondToUserTool",
         ]
+        if ENABLE_DIRECT_EMAIL_SEND:
+            tools.insert(3, "SendEmailTool")
+        return tools
 
     @property
     def system_prompt(self) -> str:
@@ -53,6 +61,17 @@ class EmailAgent(BaseAgent):
         ) if GOOGLE_TIER1 else "none configured"
         tier2_info = ", ".join(GOOGLE_TIER2) if GOOGLE_TIER2 else "none configured"
         account_list = ", ".join(f'"{a}"' for a in GOOGLE_ACCOUNTS) if GOOGLE_ACCOUNTS else "none"
+
+        sending_tool_line = (
+            f"- SendEmailTool: Send emails (use account param: {account_list})"
+            if ENABLE_DIRECT_EMAIL_SEND
+            else "- SendEmailTool: Disabled in this runtime"
+        )
+        sending_instruction = (
+            "When asked to send an email, use SendEmailTool and require explicit user confirmation."
+            if ENABLE_DIRECT_EMAIL_SEND
+            else "When asked to send an email, create a draft and ask the user to send it manually."
+        )
 
         return f"""You are an email management specialist, a personal assistant.
 
@@ -68,12 +87,12 @@ AVAILABLE TOOLS:
 - SearchEmailsTool: Search emails with Gmail query syntax
 - GetUnreadCountsTool: Check unread counts across all accounts
 - CreateEmailDraftTool: Create email drafts
-- SendEmailTool: Send emails (use account param: {account_list})
+{sending_tool_line}
 - FindPersonTool: Find contacts in the knowledge graph
 - RespondToUserTool: Send your final response to the user
 
 IMPORTANT: You MUST use these actual tools. Do NOT generate fake XML or pretend to call functions.
-When asked to send an email, use the SendEmailTool with parameters: to, subject, body, account.
+{sending_instruction}
 
 SEARCH TIPS:
 - Use "from:" for sender, "to:" for recipient
@@ -84,15 +103,13 @@ SEARCH TIPS:
 GUIDELINES:
 1. When searching, start with Tier 1 accounts
 2. Summarize results concisely (subject, sender, date)
-3. For sending emails, confirm content with user first, then use SendEmailTool
+3. For sending emails, confirm content with user first
 4. Use FindPersonTool to resolve nicknames to email addresses
 5. Use RespondToUserTool to send your final response
 
 SENDING EMAILS:
-- You CAN send emails using SendEmailTool
 - Set "account" to specify which account to send from
-- Always confirm with user before sending
-- Example: SendEmailTool(to="user@example.com", subject="Hello", body="Message", account="{GOOGLE_ACCOUNTS[0] if GOOGLE_ACCOUNTS else 'default'}")"""
+- Always confirm with user before sending"""
 
     @property
     def description(self) -> str:

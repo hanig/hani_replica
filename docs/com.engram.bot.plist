@@ -9,11 +9,11 @@
     <array>
         <string>/usr/bin/env</string>
         <string>python3</string>
-        <string>/path/to/engram/scripts/run_bot.py</string>
+        <string>/Users/hani/engram/scripts/run_bot.py</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/path/to/engram</string>
+    <string>/Users/hani/engram</string>
 
     <!-- Keep the bot running -->
     <key>KeepAlive</key>
@@ -28,10 +28,10 @@
     <integer>30</integer>
 
     <key>StandardOutPath</key>
-    <string>/path/to/engram/logs/bot.log</string>
+    <string>/Users/hani/engram/logs/bot.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/path/to/engram/logs/bot_error.log</string>
+    <string>/Users/hani/engram/logs/bot_error.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>

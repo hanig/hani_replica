@@ -14,7 +14,12 @@ from typing import TYPE_CHECKING, Any, Generator, Iterator
 
 from anthropic import Anthropic
 
-from ..config import ANTHROPIC_API_KEY, PRIMARY_ACCOUNT, ZOTERO_DEFAULT_COLLECTION
+from ..config import (
+    ANTHROPIC_API_KEY,
+    ENABLE_DIRECT_EMAIL_SEND,
+    PRIMARY_ACCOUNT,
+    ZOTERO_DEFAULT_COLLECTION,
+)
 from .tools import (
     ALL_TOOLS,
     TOOL_NAME_MAP,
@@ -57,7 +62,7 @@ SYSTEM_PROMPT = """You are a personal AI assistant with access to tools for mana
 You have access to tools that let you:
 - Search across all indexed data (emails, documents, calendar events, Slack messages, GitHub)
 - Search and manage emails across multiple Google accounts
-- Send emails and create drafts
+- Manage outbound email
 - Check calendar events and availability
 - Create calendar events and send meeting invites to attendees
 - Search GitHub code, issues, and PRs
@@ -74,7 +79,7 @@ Guidelines:
 5. Always provide clear, concise responses.
 6. Never make up information - only use data from tools.
 7. For actions like creating issues, drafts, or sending emails, confirm the details before executing.
-8. ALWAYS confirm with the user before sending an email - show them the content first.
+8. {email_send_policy}
 9. When the user asks about "tasks" or "to-dos", use the Todoist tools (GetTodoistTasksTool, CreateTodoistTaskTool).
 
 Current date: {current_date}
@@ -115,6 +120,7 @@ class ExecutionResult:
     iterations: int = 0
     success: bool = True
     error: str | None = None
+    response_blocks: list[dict[str, Any]] | None = None
 
 
 class ToolExecutor:
@@ -186,7 +192,12 @@ class ToolExecutor:
             self._zotero_client = ZoteroClient()
         return self._zotero_client
 
-    def execute(self, tool_name: str, arguments: dict[str, Any]) -> ToolResult:
+    def execute(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+        context: "ConversationContext | None" = None,
+    ) -> ToolResult:
         """Execute a tool and return the result.
 
         Args:
@@ -205,6 +216,8 @@ class ToolExecutor:
             if not handler:
                 return ToolResult(success=False, error=f"No handler for: {handler_name}")
 
+            if handler_name == "send_email":
+                return handler(arguments, context=context)
             return handler(arguments)
 
         except Exception as e:
@@ -423,24 +436,43 @@ class ToolExecutor:
             "message": f"Draft created in {account} account",
         })
 
-    def _execute_send_email(self, args: dict) -> ToolResult:
-        """Send an email."""
-        account = args.get("account") or PRIMARY_ACCOUNT
-        result = self.multi_google.send_email(
-            account=account,
+    def _execute_send_email(
+        self,
+        args: dict,
+        context: "ConversationContext | None" = None,
+    ) -> ToolResult:
+        """Queue an email send behind explicit Slack confirmation."""
+        if not ENABLE_DIRECT_EMAIL_SEND:
+            return ToolResult(
+                success=False,
+                error=(
+                    "Direct sending is disabled. Use CreateEmailDraftTool and ask the user "
+                    "to send from their mailbox after review."
+                ),
+            )
+
+        if context is None:
+            return ToolResult(
+                success=False,
+                error="Missing conversation context for confirmation-gated send.",
+            )
+
+        from .actions.email_actions import SendEmailAction
+
+        action = SendEmailAction(
             to=args["to"],
             subject=args["subject"],
             body=args["body"],
-            cc=args.get("cc"),
-            bcc=args.get("bcc"),
+            account=args.get("account") or PRIMARY_ACCOUNT,
+            cc=(args.get("cc") or "").strip(),
+            bcc=(args.get("bcc") or "").strip(),
         )
+        context.pending_action = action
+        prompt = action.get_confirmation_prompt()
         return ToolResult(data={
-            "message_id": result.get("id"),
-            "thread_id": result.get("threadId"),
-            "account": account,
-            "to": args["to"],
-            "subject": args["subject"],
-            "message": f"Email sent successfully from {account} account",
+            "requires_confirmation": True,
+            "message": "Please confirm sending this email.",
+            "confirmation": prompt,
         })
 
     def _execute_get_github_prs(self, args: dict) -> ToolResult:
@@ -922,7 +954,15 @@ class AgentExecutor:
         """
         # Build system prompt with current date and user context
         current_date = datetime.now(timezone.utc).strftime("%A, %B %d, %Y")
-        system = SYSTEM_PROMPT.format(current_date=current_date)
+        email_send_policy = (
+            "If you need to send an email, use SendEmailTool which requires explicit Slack confirmation."
+            if ENABLE_DIRECT_EMAIL_SEND
+            else "Email sending is disabled in this runtime. Create drafts for review instead."
+        )
+        system = SYSTEM_PROMPT.format(
+            current_date=current_date,
+            email_send_policy=email_send_policy,
+        )
 
         # Inject user memory context if available
         if self.user_memory:
@@ -1006,7 +1046,11 @@ class AgentExecutor:
                                 )
 
                             # Execute the tool
-                            result = self._tool_executor.execute(tool_name, tool_input)
+                            result = self._tool_executor.execute(
+                                tool_name,
+                                tool_input,
+                                context=context,
+                            )
 
                             # Record tool call
                             tool_calls_history.append({
@@ -1015,6 +1059,22 @@ class AgentExecutor:
                                 "result": result.to_content()[:500],  # Truncate for history
                                 "success": result.success,
                             })
+
+                            if (
+                                tool_name == "SendEmailTool"
+                                and result.success
+                                and isinstance(result.data, dict)
+                                and result.data.get("requires_confirmation")
+                            ):
+                                confirmation = result.data.get("confirmation", {})
+                                return ExecutionResult(
+                                    response=confirmation.get(
+                                        "text", "Please confirm sending this email."
+                                    ),
+                                    tool_calls=tool_calls_history,
+                                    iterations=iterations,
+                                    response_blocks=confirmation.get("blocks"),
+                                )
 
                             tool_results.append({
                                 "type": "tool_result",
@@ -1075,7 +1135,15 @@ class AgentExecutor:
         """
         # Build system prompt with current date and user context
         current_date = datetime.now(timezone.utc).strftime("%A, %B %d, %Y")
-        system = SYSTEM_PROMPT.format(current_date=current_date)
+        email_send_policy = (
+            "If you need to send an email, use SendEmailTool which requires explicit Slack confirmation."
+            if ENABLE_DIRECT_EMAIL_SEND
+            else "Email sending is disabled in this runtime. Create drafts for review instead."
+        )
+        system = SYSTEM_PROMPT.format(
+            current_date=current_date,
+            email_send_policy=email_send_policy,
+        )
 
         # Inject user memory context if available
         if self.user_memory:
@@ -1228,7 +1296,11 @@ class AgentExecutor:
                             )
 
                             # Execute the tool
-                            result = self._tool_executor.execute(tool_name, tool_input)
+                            result = self._tool_executor.execute(
+                                tool_name,
+                                tool_input,
+                                context=context,
+                            )
 
                             # Record tool call
                             tool_calls_history.append({
@@ -1237,6 +1309,28 @@ class AgentExecutor:
                                 "result": result.to_content()[:500],
                                 "success": result.success,
                             })
+
+                            if (
+                                tool_name == "SendEmailTool"
+                                and result.success
+                                and isinstance(result.data, dict)
+                                and result.data.get("requires_confirmation")
+                            ):
+                                confirmation = result.data.get("confirmation", {})
+                                response_text = confirmation.get(
+                                    "text", "Please confirm sending this email."
+                                )
+                                yield StreamEvent(
+                                    event_type=StreamEventType.DONE,
+                                    data=response_text,
+                                    iteration=iterations,
+                                )
+                                return ExecutionResult(
+                                    response=response_text,
+                                    tool_calls=tool_calls_history,
+                                    iterations=iterations,
+                                    response_blocks=confirmation.get("blocks"),
+                                )
 
                             # Yield tool completion
                             yield StreamEvent(

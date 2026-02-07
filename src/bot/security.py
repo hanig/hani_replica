@@ -17,6 +17,19 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _normalize_action_type(action_type: str) -> str:
+    """Normalize action type names for policy matching."""
+    value = action_type.strip().lower()
+    value = re.sub(r"[^a-z0-9]+", "_", value)
+    value = re.sub(r"_+", "_", value).strip("_")
+    aliases = {
+        "create_email_draft": "create_draft",
+        "create_github_issue": "create_issue",
+        "send_email": "send_message",
+    }
+    return aliases.get(value, value)
+
+
 class SecurityLevel(str, Enum):
     """Security enforcement levels."""
     STRICT = "strict"      # Block suspicious content
@@ -344,6 +357,8 @@ class SecurityGuard:
         """
         context = context or {}
 
+        normalized_action = _normalize_action_type(action_type)
+
         # Actions that require extra validation
         sensitive_actions = {
             "create_draft": "Creates an email draft",
@@ -351,10 +366,10 @@ class SecurityGuard:
             "send_message": "Sends a message",
         }
 
-        if action_type in sensitive_actions:
+        if normalized_action in sensitive_actions:
             # Log the sensitive action attempt
             logger.info(
-                f"Sensitive action '{action_type}' requested by user {user_id}"
+                f"Sensitive action '{normalized_action}' requested by user {user_id}"
             )
 
             # In strict mode, we could require additional confirmation
@@ -370,9 +385,9 @@ class SecurityGuard:
                             user_id=user_id,
                             threat_type=ThreatType.UNAUTHORIZED_ACTION,
                             severity="high",
-                            description=f"Blocked {action_type}: suspicious content detected",
+                            description=f"Blocked {normalized_action}: suspicious content detected",
                             blocked=True,
-                            metadata={"action_type": action_type},
+                            metadata={"action_type": normalized_action},
                         )
                         self._record_event(event)
                         return False, event

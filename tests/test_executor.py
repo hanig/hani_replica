@@ -132,6 +132,37 @@ class TestToolExecutor:
         assert result.success is True
         assert result.data["draft_id"] == "draft123"
 
+    def test_execute_send_email_is_blocked(self, executor):
+        """Test direct send-email tool is blocked defensively."""
+        with patch("src.bot.executor.ENABLE_DIRECT_EMAIL_SEND", False):
+            result = executor.execute("SendEmailTool", {
+                "to": "test@example.com",
+                "subject": "Test",
+                "body": "Body",
+            })
+        assert result.success is False
+        assert "disabled" in (result.error or "").lower()
+
+    def test_execute_send_email_requires_confirmation_when_enabled(self, executor):
+        """Test send-email creates a pending confirmation action when enabled."""
+        context = ConversationContext(user_id="U1", channel_id="C1")
+        with patch("src.bot.executor.ENABLE_DIRECT_EMAIL_SEND", True):
+            result = executor.execute(
+                "SendEmailTool",
+                {
+                    "to": "test@example.com",
+                    "subject": "Test",
+                    "body": "Body",
+                    "account": "arc",
+                },
+                context=context,
+            )
+
+        assert result.success is True
+        assert result.data["requires_confirmation"] is True
+        assert "confirmation" in result.data
+        assert context.pending_action is not None
+
     @patch("src.bot.executor.ToolExecutor.github_client", new_callable=MagicMock)
     def test_execute_get_github_prs(self, mock_github, executor):
         """Test executing GitHub PRs tool."""

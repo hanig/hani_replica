@@ -269,7 +269,11 @@ class BaseAgent(ABC):
                             logger.info(f"Executing tool: {tool_name}")
 
                             # Execute tool
-                            result = self.tool_executor.execute(tool_name, tool_input)
+                            result = self.tool_executor.execute(
+                                tool_name,
+                                tool_input,
+                                context=context,
+                            )
 
                             # Record tool call
                             tool_calls_history.append({
@@ -278,6 +282,25 @@ class BaseAgent(ABC):
                                 "result": result.to_content()[:500],
                                 "success": result.success,
                             })
+
+                            if (
+                                tool_name == "SendEmailTool"
+                                and result.success
+                                and isinstance(result.data, dict)
+                                and result.data.get("requires_confirmation")
+                            ):
+                                confirmation = result.data.get("confirmation", {})
+                                return AgentResult(
+                                    response=confirmation.get(
+                                        "text", "Please confirm sending this email."
+                                    ),
+                                    agent_type=self.AGENT_TYPE,
+                                    tool_calls=tool_calls_history,
+                                    iterations=iterations,
+                                    metadata={
+                                        "response_blocks": confirmation.get("blocks")
+                                    },
+                                )
 
                             tool_results.append({
                                 "type": "tool_result",
@@ -443,7 +466,11 @@ class BaseAgent(ABC):
                                 iteration=iterations,
                             )
 
-                            result = self.tool_executor.execute(tool_name, tool_input)
+                            result = self.tool_executor.execute(
+                                tool_name,
+                                tool_input,
+                                context=context,
+                            )
 
                             tool_calls_history.append({
                                 "tool": tool_name,
@@ -451,6 +478,32 @@ class BaseAgent(ABC):
                                 "result": result.to_content()[:500],
                                 "success": result.success,
                             })
+
+                            if (
+                                tool_name == "SendEmailTool"
+                                and result.success
+                                and isinstance(result.data, dict)
+                                and result.data.get("requires_confirmation")
+                            ):
+                                confirmation = result.data.get("confirmation", {})
+                                response_text = confirmation.get(
+                                    "text", "Please confirm sending this email."
+                                )
+                                yield AgentStreamEvent(
+                                    event_type="done",
+                                    data=response_text,
+                                    agent_type=self.AGENT_TYPE,
+                                    iteration=iterations,
+                                )
+                                return AgentResult(
+                                    response=response_text,
+                                    agent_type=self.AGENT_TYPE,
+                                    tool_calls=tool_calls_history,
+                                    iterations=iterations,
+                                    metadata={
+                                        "response_blocks": confirmation.get("blocks")
+                                    },
+                                )
 
                             yield AgentStreamEvent(
                                 event_type="tool_done",

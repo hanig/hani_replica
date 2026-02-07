@@ -315,7 +315,9 @@ def register_event_handlers(
 
         except Exception as e:
             logger.error(f"Error handling message: {e}", exc_info=True)
-            error_msg = format_error_message(str(e))
+            error_msg = format_error_message(
+                "I hit an internal error while processing your request."
+            )
             say(text=error_msg, thread_ts=thread_ts)
             audit_logger.log_error(
                 error=str(e),
@@ -334,8 +336,20 @@ def register_event_handlers(
         # Extract action key from action_id (e.g., "confirm_action:abc123")
         action_key = action_id.split(":", 1)[1] if ":" in action_id else ""
 
-        # Get conversation context
-        context = conversation_manager.get(user_id, channel_id)
+        # Resolve conversation context. Confirmation clicks often happen on thread replies,
+        # so prefer thread-aware lookup and fall back to pending-action search by action id.
+        interaction_thread_ts = (
+            body.get("container", {}).get("thread_ts")
+            or body.get("message", {}).get("thread_ts")
+            or body.get("message", {}).get("ts")
+        )
+        context = conversation_manager.get(user_id, channel_id, thread_ts=interaction_thread_ts)
+        if not context or not context.pending_action:
+            context = conversation_manager.find_pending_action_context(
+                user_id=user_id,
+                channel_id=channel_id,
+                action_id=action_key or None,
+            )
 
         if not context or not context.pending_action:
             # Update message to show expired
@@ -348,6 +362,43 @@ def register_event_handlers(
             return
 
         pending = context.pending_action
+        pending_action_id = getattr(pending, "action_id", "")
+
+        # Reject stale or mismatched confirmation clicks.
+        if not action_key or action_key != pending_action_id:
+            audit_logger.log_security_event(
+                event_type=AuditEventType.SECURITY_BLOCKED,
+                user_id=user_id,
+                description="Action confirmation rejected: action ID mismatch",
+                details={"received_action_key": action_key},
+                blocked=True,
+            )
+            client.chat_update(
+                channel=channel_id,
+                ts=message_ts,
+                text="This action is no longer valid. Please create a new request.",
+                blocks=[],
+            )
+            context.pending_action = None
+            return
+
+        # Enforce pending action timeout on confirm/cancel clicks.
+        if hasattr(pending, "is_expired") and pending.is_expired():
+            audit_logger.log_security_event(
+                event_type=AuditEventType.SECURITY_BLOCKED,
+                user_id=user_id,
+                description="Action confirmation rejected: action expired",
+                blocked=True,
+            )
+            client.chat_update(
+                channel=channel_id,
+                ts=message_ts,
+                text="This action has expired. Please create a new request.",
+                blocks=[],
+            )
+            context.pending_action = None
+            return
+
         action_type = pending.get_action_type() if hasattr(pending, 'get_action_type') else "unknown"
 
         # Validate action with security guard
@@ -458,6 +509,8 @@ def _handle_with_agent(
 
         if result.success:
             response = {"text": result.response}
+            if result.response_blocks:
+                response["blocks"] = result.response_blocks
 
             # Log tool calls for debugging
             if result.tool_calls:
@@ -587,6 +640,13 @@ def _handle_with_agent_streaming(
                     f"in {final_result.iterations} iterations (streaming)"
                 )
 
+            # For confirmation flows, return blocks for an explicit button-based confirm step.
+            if final_result.response_blocks:
+                return {
+                    "text": final_text,
+                    "blocks": final_result.response_blocks,
+                }, None
+
             # Return response (already posted via streaming updates)
             return {"text": final_text, "_streaming_sent": True}, None
         else:
@@ -630,6 +690,8 @@ def _handle_with_multi_agent(
 
         if result.success:
             response = {"text": result.response}
+            if result.metadata.get("response_blocks"):
+                response["blocks"] = result.metadata["response_blocks"]
 
             # Log agent usage
             if result.metadata.get("specialists_used"):
@@ -752,6 +814,12 @@ def _handle_with_multi_agent_streaming(
                     f"Orchestrator (streaming) used specialists: "
                     f"{final_result.metadata['specialists_used']}"
                 )
+
+            if final_result.metadata.get("response_blocks"):
+                return {
+                    "text": final_text,
+                    "blocks": final_result.metadata["response_blocks"],
+                }, None
 
             return {"text": final_text, "_streaming_sent": True}, None
         else:

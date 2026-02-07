@@ -144,6 +144,9 @@ BOT_MODE = get_env("BOT_MODE", "agent")
 # Enable streaming responses (applies to agent and multi_agent modes)
 ENABLE_STREAMING = get_env("ENABLE_STREAMING", "true").lower() in ("true", "1", "yes")
 
+# Allow direct email sending from tools (requires explicit Slack confirmation flow)
+ENABLE_DIRECT_EMAIL_SEND = get_env("ENABLE_DIRECT_EMAIL_SEND", "false").lower() in ("true", "1", "yes")
+
 # User timezone (IANA name, e.g., "America/Los_Angeles")
 USER_TIMEZONE = get_env("USER_TIMEZONE", "America/Los_Angeles")
 
@@ -216,6 +219,7 @@ def get_config() -> dict[str, Any]:
         "agent_model": AGENT_MODEL,
         "bot_mode": BOT_MODE,
         "enable_streaming": ENABLE_STREAMING,
+        "enable_direct_email_send": ENABLE_DIRECT_EMAIL_SEND,
         "user_timezone": USER_TIMEZONE,
         "streaming_update_interval": STREAMING_UPDATE_INTERVAL,
         "knowledge_graph_db": str(KNOWLEDGE_GRAPH_DB),
