@@ -1,14 +1,16 @@
 """Heartbeat system for proactive notifications."""
 
+import json
 import logging
 import time
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
+from anthropic import Anthropic
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
-from ..config import SLACK_AUTHORIZED_USERS, get_user_timezone
+from ..config import ANTHROPIC_API_KEY, AGENT_MODEL, SLACK_AUTHORIZED_USERS, get_user_timezone
 from .formatters import format_briefing, format_calendar_events
 from .proactive_settings import ProactiveSettingsStore, UserProactiveSettings
 
@@ -488,6 +490,9 @@ class HeartbeatManager:
     def _send_daily_briefing(self, settings: UserProactiveSettings) -> bool:
         """Send a daily briefing to a user.
 
+        Uses an LLM to generate a detailed, natural-language briefing from
+        raw data — matching the quality of interactive briefing requests.
+
         Args:
             settings: User's proactive settings.
 
@@ -502,34 +507,13 @@ class HeartbeatManager:
             # Generate briefing data
             briefing = self._generate_briefing()
 
-            # Format the briefing
-            formatted = format_briefing(briefing)
-
-            # Add greeting
-            hour = datetime.now().hour
-            if hour < 12:
-                greeting = "Good morning!"
-            elif hour < 17:
-                greeting = "Good afternoon!"
-            else:
-                greeting = "Good evening!"
-
-            greeting_block = {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f":wave: *{greeting}* Here's your daily briefing:",
-                },
-            }
-
-            blocks = [greeting_block]
-            if "blocks" in formatted:
-                blocks.extend(formatted["blocks"])
+            # Use LLM to produce a detailed briefing (same quality as interactive)
+            briefing_text = self._format_briefing_with_llm(briefing)
 
             self.slack_client.chat_postMessage(
                 channel=channel_id,
-                text=f"{greeting} Here's your daily briefing.",
-                blocks=blocks,
+                text=briefing_text,
+                mrkdwn=True,
             )
 
             logger.info(f"Sent daily briefing to {settings.user_id}")
@@ -541,6 +525,37 @@ class HeartbeatManager:
         except Exception as e:
             logger.error(f"Error sending daily briefing: {e}")
             return False
+
+    def _format_briefing_with_llm(self, briefing: dict[str, Any]) -> str:
+        """Use LLM to generate a detailed briefing from raw data.
+
+        Args:
+            briefing: Raw briefing data dictionary.
+
+        Returns:
+            Formatted briefing text in Slack mrkdwn.
+        """
+        prompt = f"""Generate a detailed daily briefing from this data. Write it in Slack mrkdwn format.
+
+Be thorough — include ALL events with times, ALL email account counts, ALL open PRs and issues
+with titles and repos, and ALL overdue tasks with projects and due dates. Add context where
+useful (e.g. note back-to-back meetings, highlight overdue items, mention if inbox is clear).
+
+Briefing data:
+{json.dumps(briefing, default=str, indent=2)}"""
+
+        try:
+            client = Anthropic(api_key=ANTHROPIC_API_KEY)
+            response = client.messages.create(
+                model=AGENT_MODEL,
+                max_tokens=2048,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return response.content[0].text
+        except Exception as e:
+            logger.warning(f"LLM briefing generation failed, falling back to static: {e}")
+            formatted = format_briefing(briefing)
+            return formatted.get("text", "Daily Briefing")
 
     def _generate_briefing(self) -> dict[str, Any]:
         """Generate briefing data.
