@@ -132,9 +132,10 @@ class LiteratureMonitor:
         """
         if queries is None:
             queries = [
-                "(cancer) AND (machine learning OR deep learning OR foundation model) AND (RNA OR genomics)",
-                "(liquid biopsy) AND (artificial intelligence OR machine learning)",
-                "(single cell) AND (cancer) AND (deep learning OR neural network)",
+                "(foundation model OR language model) AND (biology OR genomics OR protein)",
+                "(single cell) AND (deep learning OR neural network OR foundation model)",
+                "(RNA) AND (machine learning OR deep learning) AND (structure OR therapeutics)",
+                "(perturbation OR CRISPR screen) AND (machine learning OR prediction)",
             ]
 
         end = datetime.now()

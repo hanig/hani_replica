@@ -8,6 +8,7 @@ import anthropic
 
 from src.config import ANTHROPIC_API_KEY, AGENT_MODEL, get_user_timezone
 from src.ideaspark.corpus import PaperCorpus
+from src.ideaspark.deep_research import DeepResearcher
 from src.ideaspark.literature import LiteratureMonitor
 from src.ideaspark.memory import IdeaMemory
 
@@ -17,70 +18,74 @@ logger = logging.getLogger(__name__)
 
 THEMES = [
     {
-        "name": "Foundation models + cancer genomics",
-        "query": "foundation model DNA RNA cancer genomics tumor mutation codon language model",
+        "name": "Genomic FMs × unexpected domains",
+        "query": "foundation model genomics microbiology ecology neuroscience agriculture evolution antibiotic resistance",
         "description": (
-            "Genomic and biological foundation models applied to cancer — including but NOT "
-            "limited to Hani's own (Evo 2, Mach-1, CodonFM). Actively consider external FMs: "
-            "Enformer, Borzoi, Nucleotide Transformer 3, Caduceus, scFoundation, "
-            "ESM/ESM2, AlphaFold/AlphaFold3, Boltz-2, RiNALMo. Cross any of these "
-            "with cancer biology questions: tumor genomes, codon usage, variant effect "
-            "prediction, regulatory grammar, gene expression programs."
+            "Anchor on a genomic FM (Evo 2, Enformer, Borzoi, Nucleotide Transformer 3, Caduceus) "
+            "and reach into a domain FAR from cancer: microbiology, ecology, neuroscience, "
+            "agriculture, evolutionary biology, infectious disease, conservation. Where would "
+            "large-scale genomic models create breakthroughs that specialists in those fields "
+            "couldn't achieve on their own?"
         ),
     },
     {
-        "name": "AI + liquid biopsy / early detection",
-        "query": "liquid biopsy cell-free RNA cfRNA cancer detection early diagnosis multi-analyte foundation model",
+        "name": "Liquid biopsy tech × non-cancer applications",
+        "query": "cell-free RNA cfRNA biomarker neurodegeneration autoimmune transplant organ injury pregnancy infection",
         "description": (
-            "cfRNA/cfDNA models, oncRNA signatures, multi-analyte integration, early cancer "
-            "detection. Consider how any foundation model (Evo 2, Enformer, Borzoi, scFoundation, etc.) "
-            "could improve liquid biopsy feature extraction, denoising, or multi-modal integration."
+            "Anchor on Hani's liquid biopsy capabilities (Exai-1, oncRNA, cfRNA profiling). "
+            "Reach into non-cancer clinical domains: neurodegeneration, organ transplant rejection, "
+            "autoimmune disease, infectious disease monitoring, pregnancy complications, "
+            "mental health biomarkers, aging. Where does cfRNA give an edge no one is exploiting?"
         ),
     },
     {
-        "name": "AI + tumor evolution & heterogeneity",
-        "query": "tumor evolution clonal dynamics heterogeneity resistance phylogenetic cancer foundation model",
+        "name": "Perturbation biology × systems outside oncology",
+        "query": "perturbation CRISPR screen drug response immunology neuroscience development regeneration stem cell",
         "description": (
-            "Phylogenetic models, clonal dynamics prediction, therapy resistance modeling. "
-            "How can FMs (genomic or single-cell) improve evolutionary trajectory prediction, "
-            "resistance mechanism discovery, or clonal fitness estimation?"
+            "Anchor on perturbation capabilities (STATE, Tahoe-100M, GENEVA, CRISPR screening). "
+            "Reach into immunology, neuroscience, developmental biology, regenerative medicine, "
+            "stem cell engineering, or metabolic disease. Where would massive perturbation atlases "
+            "reshape understanding in a field that hasn't had access to this scale of data?"
         ),
     },
     {
-        "name": "AI + RNA biology in cancer",
-        "query": "RNA structure splicing RBP RNA-binding protein post-transcriptional regulation cancer language model",
+        "name": "RNA biology × synthetic biology & engineering",
+        "query": "RNA structure synthetic biology gene circuit riboswitch biosensor RNA device metabolic engineering",
         "description": (
-            "Structural switches in oncogenes, splicing dysregulation, RBP networks in cancer. "
-            "Consider RNA FMs (Mach-1, CodonFM, RiNALMo, SHAPE-FM) alongside protein "
-            "language models (ESM/ESM2, Boltz-2) for RNA–protein interaction prediction."
+            "Anchor on RNA biology tools (SwitchSeeker, Mach-1, SHAPE-FM, RiNALMo). "
+            "Reach into synthetic biology, biosensor design, metabolic engineering, gene circuits, "
+            "biomanufacturing, or environmental monitoring. Where can deep RNA structural "
+            "understanding enable engineered biological systems outside therapeutics?"
         ),
     },
     {
-        "name": "AI + drug response & perturbation",
-        "query": "drug response perturbation prediction virtual screening combination therapy cancer foundation model",
+        "name": "Single-cell AI × clinical & population science",
+        "query": "single-cell clinical trial epidemiology population health aging public health biobank",
         "description": (
-            "Virtual screening, perturbation prediction, drug combinations, CRISPR screens. "
-            "Consider how cell-level FMs (STATE, Tahoe-x1, scFoundation) or chemical FMs "
-            "(MolBERT, ChemBERTa, MolGPT) enable better perturbation modeling or drug response prediction."
+            "Anchor on single-cell AI (scBaseCount, STATE, Tahoe-x1, scFoundation). "
+            "Reach into clinical trial design, epidemiology, population health, aging research, "
+            "biobanking, or health disparities. How can cell-level AI models transform "
+            "large-cohort studies or clinical decision-making at scale?"
         ),
     },
     {
-        "name": "AI + single-cell & spatial omics",
-        "query": "single-cell spatial transcriptomics cell state deconvolution niche modeling cancer foundation model",
+        "name": "Bio FMs × physical sciences & computation",
+        "query": "foundation model physics materials protein design robotics optimization simulation quantum",
         "description": (
-            "Cell state inference, deconvolution, spatial niche modeling in tumors. "
-            "Explore how single-cell FMs (STATE, Tahoe-x1, scFoundation) and "
-            "spatial methods can be combined for tumor microenvironment understanding."
+            "Anchor on any Goodarzi lab FM or dataset. Reach into physics-inspired methods, "
+            "materials science, robot-scientist systems, active learning, simulation, "
+            "optimal experimental design, or information theory. Where do ideas from "
+            "physical sciences or CS theory create new paradigms for biological modeling?"
         ),
     },
     {
-        "name": "AI + RNA therapeutics",
-        "query": "RNA therapeutics mRNA design delivery optimization generative AI RNA drugs foundation model",
+        "name": "Cancer data × global health & equity",
+        "query": "global health equity low resource diagnostics point-of-care Africa Asia Latin America",
         "description": (
-            "Generative design of RNA drugs, target discovery, delivery optimization. "
-            "Consider RNA language models (Mach-1, CodonFM, RiNALMo, SHAPE-FM), protein structure "
-            "models (AlphaFold/AlphaFold3, Boltz-2), and generative chemistry models for "
-            "end-to-end RNA therapeutic design."
+            "Anchor on any Goodarzi lab tool, model, or dataset. Reach into global health, "
+            "point-of-care diagnostics, low-resource settings, neglected diseases, health equity, "
+            "or frugal innovation. How can cutting-edge AI and omics tools be adapted or "
+            "transferred to address health challenges in underserved populations?"
         ),
     },
 ]
@@ -102,24 +107,39 @@ Key active projects: Evo 2 (40B DNA foundation model), Mach-1/1.5 (RNA foundatio
 
 Companies: Exai Bio (liquid biopsy), Tahoe Therapeutics (single-cell drug perturbation), Therna Biosciences (programmable RNA therapeutics).
 
-IMPORTANT — Foundation model scope: When generating ideas involving foundation models, do NOT limit yourself to Hani's own models. The field is broad. Actively consider external FMs and how Hani's expertise could intersect with them:
+Foundation models in scope:
 - DNA/genomic FMs: Evo 2, Enformer, Borzoi, Nucleotide Transformer 3, Caduceus
 - Single-cell FMs: STATE, Tahoe-x1, scFoundation
 - RNA FMs: Mach-1, CodonFM, RiNALMo, SHAPE-FM (unpublished, Goodarzi lab)
 - Protein FMs: Boltz-2, ESM/ESM2 (Meta), AlphaFold/AlphaFold3
 - Chemical/drug FMs: MolBERT, ChemBERTa, MolGPT
 - Multi-modal: BiomedCLIP, PLIP
-The best ideas often come from crossing Hani's unique datasets and biology with external models, or vice versa.
 
-Your job is to generate ONE novel, well-grounded research idea per day at the intersection of AI and cancer biology. Each idea must:
-1. Be grounded in Hani's published work (reference specific papers)
-2. Connect to recent literature or emerging trends — including external FM releases
-3. Be specific enough to act on (not vague hand-waving)
-4. Be non-obvious — don't just suggest "apply X to Y"
-5. Consider feasibility given the group's resources
-6. Vary the external tools/models referenced — don't always default to the same FM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CRITICAL INSTRUCTION — IDEA GENERATION PHILOSOPHY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-When suggesting collaborators, prioritize researchers at Arc Institute, Stanford, UCSF, and Berkeley."""
+Your job is NOT to recombine things Hani already does. He already thinks about those intersections every day. Your job is to PULL HIM INTO UNFAMILIAR TERRITORY.
+
+Each idea must:
+1. ANCHOR on exactly ONE pillar of Hani's work (one paper, one dataset, one capability)
+2. REACH into a field or method Hani does NOT currently work in — the further from his comfort zone the better
+3. The "reach" should come from the new literature or the theme — fields like immunology, neuroscience, ecology, physics, materials science, clinical trial design, epidemiology, synthetic biology, metabolomics, imaging, robotics, etc.
+4. Be specific enough to act on (not vague hand-waving)
+5. Explain WHY the anchor gives Hani a unique edge in this unfamiliar space
+6. The idea should feel slightly uncomfortable — if it's obvious to someone in Hani's lab, it's not far enough
+
+BAD ideas (too close to home):
+- "Use Mach-1 to study splicing in cancer" (he already does this)
+- "Combine Evo 2 with liquid biopsy" (he already thinks about this)
+- "Apply STATE to predict drug responses" (literally the project)
+
+GOOD ideas (one anchor, far reach):
+- "Use Evo 2's genomic representations to predict antibiotic resistance evolution in hospital microbiomes" (anchor: Evo 2, reach: clinical microbiology)
+- "Apply SwitchSeeker's RNA structure methods to discover riboswitches in crop pathogens for agricultural biocontrol" (anchor: SwitchSeeker, reach: agriculture)
+- "Repurpose Tahoe-100M perturbation embeddings as features for predicting clinical trial outcomes" (anchor: Tahoe, reach: clinical trial design)
+
+When suggesting collaborators, prioritize researchers at Arc Institute, Stanford, UCSF, and Berkeley — but specifically researchers whose expertise covers the UNFAMILIAR territory, not Hani's own domain."""
 
 
 def build_generation_prompt(
@@ -129,6 +149,7 @@ def build_generation_prompt(
     new_papers: list[dict],
     memory: IdeaMemory,
     is_stretch: bool = False,
+    research_brief: str = "",
 ) -> str:
     """Build the user prompt for idea generation."""
 
@@ -154,15 +175,17 @@ def build_generation_prompt(
     # Strategy description
     if strategy == "A":
         strategy_desc = (
-            "Strategy A — Cross Hani's published work against the new literature below. "
-            "Find gaps his work could fill, extensions enabled by new methods, "
-            "contradictions worth resolving, or datasets that unlock new analyses."
+            "Strategy A — Pick ONE of Hani's papers below as your anchor. Then look at the "
+            "new literature and find a paper from a DIFFERENT field that creates an unexpected "
+            "opportunity. The idea should live in the OTHER field, with Hani's anchor "
+            "providing a unique edge that researchers in that field lack."
         )
     else:
         strategy_desc = (
-            "Strategy B — Cross Hani's published work against emerging AI methods, "
-            "clinical trial signals, or newly released datasets. Look for new architectures, "
-            "training paradigms, biomarker approvals, or data releases that create opportunities."
+            "Strategy B — Pick ONE of Hani's capabilities (a model, dataset, or method) as "
+            "your anchor. Then identify an unsolved problem in a field OUTSIDE Hani's current "
+            "work — immunology, neuroscience, ecology, materials, clinical trials, public health, "
+            "synthetic biology, agriculture, etc. — where that anchor could be transformative."
         )
 
     stretch_note = ""
@@ -175,6 +198,15 @@ def build_generation_prompt(
 
     idea_number = memory.get_idea_count() + 1
 
+    # Deep research brief section
+    research_section = ""
+    if research_brief:
+        research_section = f"""
+
+### Deep Research Brief (today's exploration of unfamiliar territory):
+{research_brief}
+"""
+
     prompt = f"""Generate IdeaSpark #{idea_number}.
 
 **Today's Theme:** {theme['name']}
@@ -183,11 +215,11 @@ def build_generation_prompt(
 **{strategy_desc}**{stretch_note}{pref_context}
 
 ---
-
-### Hani's Relevant Papers:
+{research_section}
+### Hani's Papers (pick ONE as your anchor — do NOT combine multiple):
 {corpus_section}
 
-### Recent Literature (last 30 days):
+### Papers from the Unfamiliar Domain:
 {lit_section}
 
 ---
@@ -252,6 +284,7 @@ class IdeaSparkAgent:
         self.corpus = PaperCorpus()
         self.literature = LiteratureMonitor()
         self.memory = IdeaMemory()
+        self.researcher = DeepResearcher()
         self.client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
     def _get_literature(self) -> list[dict]:
@@ -296,6 +329,21 @@ class IdeaSparkAgent:
         if is_stretch:
             logger.info("STRETCH idea day")
 
+        # Run deep research for today's theme (this is the heavy lift)
+        corpus_papers = self.corpus.search(base_theme["query"], top_k=8)
+        logger.info(f"Running deep research for theme: {base_theme['name']}")
+        research_result = self.researcher.research_theme(
+            theme=base_theme,
+            anchor_papers=corpus_papers,
+        )
+        research_brief = research_result.get("research_brief", "")
+        discovered_papers = research_result.get("papers", [])
+        logger.info(
+            f"Deep research complete: {len(discovered_papers)} papers, "
+            f"brief={len(research_brief)} chars"
+        )
+
+        # Also get standard literature as fallback
         new_papers = self._get_literature()
 
         rejected_titles: list[str] = []
@@ -305,12 +353,10 @@ class IdeaSparkAgent:
                 theme = base_theme
                 strategy = base_strategy
             elif attempt == 2:
-                # Same theme, flip strategy, different corpus sample
                 theme = base_theme
                 strategy = "B" if base_strategy == "A" else "A"
                 logger.info(f"Attempt {attempt}: flipping to strategy {strategy}")
             else:
-                # Rotate to next theme as escape hatch
                 theme_idx = (THEMES.index(base_theme) + 1) % len(THEMES)
                 theme = THEMES[theme_idx]
                 strategy = "B" if base_strategy == "A" else "A"
@@ -324,9 +370,10 @@ class IdeaSparkAgent:
                 random.shuffle(corpus_papers)
             logger.info(f"Corpus papers: {len(corpus_papers)}")
 
-            # Filter literature for current theme
-            relevant_new = self._filter_literature_by_theme(new_papers, theme)
-            logger.info(f"New literature: {len(new_papers)}, theme-relevant: {len(relevant_new)}")
+            # Use deep research papers primarily, standard lit as supplement
+            relevant_new = discovered_papers[:10] if discovered_papers else \
+                self._filter_literature_by_theme(new_papers, theme)
+            logger.info(f"Papers for prompt: {len(relevant_new)} (deep research: {bool(discovered_papers)})")
 
             # Build prompt
             prompt = build_generation_prompt(
@@ -336,6 +383,7 @@ class IdeaSparkAgent:
                 new_papers=relevant_new,
                 memory=self.memory,
                 is_stretch=is_stretch,
+                research_brief=research_brief,
             )
 
             if rejected_titles:
