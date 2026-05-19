@@ -81,6 +81,9 @@ python scripts/query_knowledge.py stats
 # Run Slack bot
 python scripts/run_bot.py
 
+# Check/restart launchd bot service if unhealthy
+python scripts/bot_healthcheck.py
+
 # Run tests
 pytest tests/
 ```

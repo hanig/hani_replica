@@ -512,6 +512,14 @@ cp docs/com.engram.bot.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.engram.bot.plist
 ```
 
+**Watchdog health check every 5 minutes:**
+```bash
+cp docs/com.engram.bot-healthcheck.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.engram.bot-healthcheck.plist
+```
+
+The watchdog runs `scripts/bot_healthcheck.py`, verifies `com.engram.bot` is loaded with a running `scripts/run_bot.py` process, and bootstraps/kickstarts the service if needed. Logs are written to `logs/bot_healthcheck.log`.
+
 ## Security
 
 ### Access Control

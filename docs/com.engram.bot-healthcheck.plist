@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.engram.bot-healthcheck</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/hani/miniforge3/bin/python</string>
+        <string>/Users/hani/Box Sync/CLAUDE/engram/scripts/bot_healthcheck.py</string>
+        <string>--label</string>
+        <string>com.engram.bot</string>
+        <string>--service-plist</string>
+        <string>/Users/hani/Library/LaunchAgents/com.engram.bot.plist</string>
+        <string>--expected-command</string>
+        <string>scripts/run_bot.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/hani/Box Sync/CLAUDE/engram</string>
+
+    <!-- Run every 5 minutes -->
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/hani/Box Sync/CLAUDE/engram/logs/bot_healthcheck.launchd.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/hani/Box Sync/CLAUDE/engram/logs/bot_healthcheck.launchd.err</string>
+</dict>
+</plist>
