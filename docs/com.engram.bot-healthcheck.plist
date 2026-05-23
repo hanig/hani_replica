@@ -15,6 +15,12 @@
         <string>/Users/hani/Library/LaunchAgents/com.engram.bot.plist</string>
         <string>--expected-command</string>
         <string>scripts/run_bot.py</string>
+        <string>--error-log</string>
+        <string>/Users/hani/Box Sync/CLAUDE/engram/logs/bot_error.log</string>
+        <string>--broken-pipe-threshold</string>
+        <string>5</string>
+        <string>--broken-pipe-lookback-seconds</string>
+        <string>60</string>
     </array>
 
     <key>WorkingDirectory</key>

@@ -1,10 +1,13 @@
 """Tests for the bot health-check watchdog."""
 
+from datetime import datetime
 from unittest.mock import patch
 
 from scripts.bot_healthcheck import (
     ServiceStatus,
     _parse_launchctl_print,
+    count_recent_log_occurrences,
+    has_recent_broken_pipe_loop,
     is_service_healthy,
     repair_service,
 )
@@ -65,6 +68,57 @@ def test_repair_service_refuses_missing_plist(mock_status, tmp_path):
     mock_status.return_value = ServiceStatus(loaded=False, running=False)
 
     assert repair_service("com.test", tmp_path / "missing.plist") is False
+
+
+def test_count_recent_log_occurrences_uses_timestamp_window(tmp_path):
+    """Only recent timestamped marker lines are counted."""
+    log_path = tmp_path / "bot_error.log"
+    log_path.write_text(
+        "\n".join(
+            [
+                "2026-05-23 12:00:00,000 - slack_bolt.App - ERROR - BrokenPipeError",
+                "2026-05-23 12:04:00,000 - slack_bolt.App - ERROR - BrokenPipeError",
+                "2026-05-23 12:04:30,000 - slack_bolt.App - ERROR - BrokenPipeError",
+                "unparseable BrokenPipeError",
+            ]
+        )
+    )
+
+    assert (
+        count_recent_log_occurrences(
+            log_path,
+            "BrokenPipeError",
+            lookback_seconds=120,
+            now=datetime(2026, 5, 23, 12, 5, 0),
+        )
+        == 2
+    )
+
+
+def test_has_recent_broken_pipe_loop_respects_threshold(tmp_path):
+    """Recent broken-pipe loops become an unhealthy condition."""
+    log_path = tmp_path / "bot_error.log"
+    log_path.write_text(
+        "\n".join(
+            [
+                "2026-05-23 12:04:00,000 - slack_bolt.App - ERROR - BrokenPipeError",
+                "2026-05-23 12:04:10,000 - slack_bolt.App - ERROR - BrokenPipeError",
+            ]
+        )
+    )
+
+    assert has_recent_broken_pipe_loop(
+        log_path,
+        lookback_seconds=120,
+        threshold=2,
+        now=datetime(2026, 5, 23, 12, 5, 0),
+    )
+    assert not has_recent_broken_pipe_loop(
+        log_path,
+        lookback_seconds=120,
+        threshold=3,
+        now=datetime(2026, 5, 23, 12, 5, 0),
+    )
 
 
 @patch("scripts.bot_healthcheck.is_service_healthy")

@@ -7,13 +7,16 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_LABEL = "com.engram.bot"
 DEFAULT_SERVICE_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{DEFAULT_LABEL}.plist"
 DEFAULT_LOG_FILE = PROJECT_ROOT / "logs" / "bot_healthcheck.log"
+DEFAULT_BOT_ERROR_LOG = PROJECT_ROOT / "logs" / "bot_error.log"
 DEFAULT_EXPECTED_COMMAND = "scripts/run_bot.py"
+BROKEN_PIPE_MARKER = "BrokenPipeError"
 
 
 @dataclass
@@ -100,6 +103,68 @@ def is_service_healthy(status: ServiceStatus, expected_command: str | None = Non
     return True
 
 
+def _parse_log_timestamp(line: str) -> datetime | None:
+    """Parse the timestamp prefix used by the bot logs."""
+    if len(line) < 23:
+        return None
+    try:
+        return datetime.strptime(line[:23], "%Y-%m-%d %H:%M:%S,%f")
+    except ValueError:
+        return None
+
+
+def count_recent_log_occurrences(
+    log_path: Path,
+    marker: str,
+    lookback_seconds: int,
+    now: datetime | None = None,
+) -> int:
+    """Count marker occurrences in recent timestamped log lines."""
+    if not log_path.exists():
+        return 0
+
+    now = now or datetime.now()
+    cutoff = now - timedelta(seconds=lookback_seconds)
+    count = 0
+
+    try:
+        lines = log_path.read_text(errors="replace").splitlines()
+    except OSError as e:
+        logging.warning("Could not read log file %s: %s", log_path, e)
+        return 0
+
+    for line in reversed(lines):
+        timestamp = _parse_log_timestamp(line)
+        if timestamp is None:
+            continue
+        if timestamp < cutoff:
+            break
+        if marker in line:
+            count += 1
+
+    return count
+
+
+def has_recent_broken_pipe_loop(
+    error_log: Path,
+    lookback_seconds: int,
+    threshold: int,
+    now: datetime | None = None,
+) -> bool:
+    """Return true if recent logs show a repeated Slack broken-pipe loop."""
+    if threshold <= 0:
+        return False
+    return (
+        count_recent_log_occurrences(
+            error_log,
+            BROKEN_PIPE_MARKER,
+            lookback_seconds,
+            now=now,
+        )
+        >= threshold
+    )
+
+
 def repair_service(
     label: str,
     service_plist: Path,
@@ -165,15 +230,47 @@ def main() -> int:
         help="Substring expected in the bot process command line",
     )
     parser.add_argument("--log-file", type=Path, default=DEFAULT_LOG_FILE)
+    parser.add_argument(
+        "--error-log",
+        type=Path,
+        default=DEFAULT_BOT_ERROR_LOG,
+        help="Bot stderr log to inspect for repeated Socket Mode failures",
+    )
+    parser.add_argument(
+        "--broken-pipe-lookback-seconds",
+        type=int,
+        default=60,
+        help="Window for counting recent BrokenPipeError entries",
+    )
+    parser.add_argument(
+        "--broken-pipe-threshold",
+        type=int,
+        default=5,
+        help="Restart if at least this many recent BrokenPipeError entries are found",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Log actions without changing launchd state")
     args = parser.parse_args()
 
     configure_logging(args.log_file)
 
     status = get_service_status(args.label)
-    if is_service_healthy(status, expected_command=args.expected_command):
+    service_healthy = is_service_healthy(status, expected_command=args.expected_command)
+    broken_pipe_loop = has_recent_broken_pipe_loop(
+        args.error_log,
+        args.broken_pipe_lookback_seconds,
+        args.broken_pipe_threshold,
+    )
+
+    if service_healthy and not broken_pipe_loop:
         logging.info("Service %s is healthy: state=%s pid=%s", args.label, status.state, status.pid)
         return 0
+
+    if broken_pipe_loop:
+        logging.warning(
+            "Service %s has a recent Socket Mode BrokenPipeError loop in %s",
+            args.label,
+            args.error_log,
+        )
 
     logging.warning(
         "Service %s unhealthy: loaded=%s running=%s state=%s pid=%s error=%s",
