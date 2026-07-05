@@ -265,6 +265,7 @@ LOG_FILE = PROJECT_ROOT / get_env("LOG_FILE", "logs/engram.log")
 # Sync settings
 SYNC_BATCH_SIZE = int(get_env("SYNC_BATCH_SIZE", "100"))
 EMBEDDING_BATCH_SIZE = int(get_env("EMBEDDING_BATCH_SIZE", "50"))
+GMAIL_STALE_HISTORY_FULL_SYNC_LIMIT = int(get_env("GMAIL_STALE_HISTORY_FULL_SYNC_LIMIT", "1000"))
 
 # Security settings
 # Level: "strict" (block suspicious), "moderate" (warn), "permissive" (log only)
@@ -339,6 +340,7 @@ def get_config() -> dict[str, Any]:
         "log_level": LOG_LEVEL,
         "sync_batch_size": SYNC_BATCH_SIZE,
         "embedding_batch_size": EMBEDDING_BATCH_SIZE,
+        "gmail_stale_history_full_sync_limit": GMAIL_STALE_HISTORY_FULL_SYNC_LIMIT,
         "security_level": SECURITY_LEVEL,
         "rate_limit_requests": RATE_LIMIT_REQUESTS,
         "rate_limit_window": RATE_LIMIT_WINDOW,

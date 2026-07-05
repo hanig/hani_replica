@@ -178,6 +178,11 @@ SLACK_ALLOW_ALL_USERS=false
 # User timezone (IANA name, default: America/Los_Angeles)
 USER_TIMEZONE=America/Los_Angeles
 
+# Sync settings
+SYNC_BATCH_SIZE=100
+EMBEDDING_BATCH_SIZE=50
+GMAIL_STALE_HISTORY_FULL_SYNC_LIMIT=1000
+
 # OpenAI API Key (for embeddings)
 OPENAI_API_KEY=sk-xxxxx
 

@@ -334,7 +334,13 @@ class GmailClient:
 
             return self.service.users().history().list(**params).execute()
         except HttpError as e:
-            logger.error(f"Error listing history: {e}")
+            if getattr(e.resp, "status", None) == 404:
+                logger.debug(
+                    "Gmail history ID %s is unavailable; caller will handle recovery",
+                    start_history_id,
+                )
+            else:
+                logger.error(f"Error listing history: {e}")
             raise
 
     @staticmethod

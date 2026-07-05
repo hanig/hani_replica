@@ -1,12 +1,17 @@
 """Gmail content indexer."""
 
-import hashlib
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from typing import Any
 
-from ..config import GOOGLE_ACCOUNTS, SYNC_BATCH_SIZE
+from googleapiclient.errors import HttpError
+
+from ..config import (
+    GMAIL_STALE_HISTORY_FULL_SYNC_LIMIT,
+    GOOGLE_ACCOUNTS,
+    SYNC_BATCH_SIZE,
+)
 from ..integrations.gmail import GmailClient
 from ..knowledge_graph import KnowledgeGraph
 
@@ -101,7 +106,7 @@ class GmailIndexer:
         self.kg.set_last_sync(
             source="gmail",
             account=account,
-            last_sync=datetime.now(timezone.utc),
+            last_sync=datetime.now(UTC),
             sync_token=history_id,
             metadata={"type": "full", "stats": stats},
         )
@@ -132,6 +137,8 @@ class GmailIndexer:
         stats = {
             "messages_added": 0,
             "messages_deleted": 0,
+            "messages_indexed": 0,
+            "people_extracted": 0,
             "errors": 0,
         }
 
@@ -145,10 +152,27 @@ class GmailIndexer:
         start_history_id = sync_state["last_sync_token"]
 
         try:
-            response = client.list_history(
-                start_history_id=start_history_id,
-                history_types=["messageAdded", "messageDeleted"],
-            )
+            try:
+                response = client.list_history(
+                    start_history_id=start_history_id,
+                    history_types=["messageAdded", "messageDeleted"],
+                )
+            except Exception as e:
+                if _is_stale_history_error(e):
+                    logger.warning(
+                        "Gmail history token for '%s' is stale; running bounded full sync "
+                        "for %s messages",
+                        account,
+                        GMAIL_STALE_HISTORY_FULL_SYNC_LIMIT,
+                    )
+                    recovered_stats = self.index_all(
+                        account,
+                        max_messages=GMAIL_STALE_HISTORY_FULL_SYNC_LIMIT,
+                    )
+                    recovered_stats["recovered_from_stale_history"] = True
+                    recovered_stats["stale_history_id"] = start_history_id
+                    return recovered_stats
+                raise
 
             # Process history records
             for history in response.get("history", []):
@@ -176,7 +200,7 @@ class GmailIndexer:
             self.kg.set_last_sync(
                 source="gmail",
                 account=account,
-                last_sync=datetime.now(timezone.utc),
+                last_sync=datetime.now(UTC),
                 sync_token=new_history_id,
                 metadata={"type": "delta", "stats": stats},
             )
@@ -184,10 +208,6 @@ class GmailIndexer:
         except Exception as e:
             logger.error(f"Error in delta sync: {e}")
             stats["errors"] += 1
-            # If history is too old, do full sync
-            if "historyId" in str(e):
-                logger.info("History ID expired, performing full sync")
-                return self.index_all(account)
 
         logger.info(f"Gmail delta sync complete for '{account}': {stats}")
         return stats
@@ -295,3 +315,21 @@ class GmailIndexer:
                 results.append((email, None))
 
         return results
+
+
+def _is_stale_history_error(error: Exception) -> bool:
+    """Return true when Gmail history.list cannot continue from a saved token."""
+    if isinstance(error, HttpError):
+        status = getattr(getattr(error, "resp", None), "status", None)
+        if status == 404:
+            return True
+
+    message = str(error).lower()
+    return (
+        "starthistoryid" in message
+        and (
+            "requested entity was not found" in message
+            or "not found" in message
+            or "history" in message
+        )
+    )

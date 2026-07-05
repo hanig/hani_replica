@@ -62,6 +62,7 @@ All secrets in `.env`:
 - `JOB_DB_PATH` - local SQLite state for long-running Slack background jobs
 - `JOB_RETENTION_DAYS` - retention for terminal background jobs
 - `ENABLE_TRACE_LOG`, `TRACE_LOG_PATH` - metadata-only model/tool trace logging
+- `GMAIL_STALE_HISTORY_FULL_SYNC_LIMIT` - bounded full Gmail recovery size when a saved history token expires
 
 ## Common Commands
 
