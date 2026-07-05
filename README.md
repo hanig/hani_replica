@@ -198,8 +198,8 @@ ZOTERO_DEFAULT_COLLECTION=MyCollection  # Default collection for new papers
 # Bot Mode: "intent" (legacy), "agent" (single agent), "multi_agent" (specialists)
 BOT_MODE=agent
 
-# Agent model for tool calling (default: claude-sonnet-4-20250514)
-AGENT_MODEL=claude-sonnet-4-20250514
+# Agent model for tool calling (default: claude-sonnet-5)
+AGENT_MODEL=claude-sonnet-5
 
 # Enable streaming responses (applies to agent and multi_agent modes)
 ENABLE_STREAMING=true

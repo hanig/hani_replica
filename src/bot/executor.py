@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from anthropic import Anthropic
 
 from ..config import (
+    AGENT_MODEL,
     ANTHROPIC_API_KEY,
     ENABLE_DIRECT_EMAIL_SEND,
     PRIMARY_ACCOUNT,
@@ -37,9 +38,6 @@ logger = logging.getLogger(__name__)
 
 # Maximum number of tool calling iterations to prevent infinite loops
 MAX_ITERATIONS = 10
-
-# Model to use for agent
-AGENT_MODEL = "claude-sonnet-4-20250514"
 
 SYSTEM_PROMPT = """You are a personal AI assistant with access to tools for managing emails, calendar, GitHub, Todoist tasks, and searching a personal knowledge graph.
 

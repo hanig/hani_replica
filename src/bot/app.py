@@ -3,8 +3,10 @@
 import atexit
 import logging
 import os
+import socket
 import time
 from typing import Callable
+from urllib.error import URLError
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -22,6 +24,17 @@ from .proactive_settings import ProactiveSettingsStore
 from .user_memory import UserMemory
 
 logger = logging.getLogger(__name__)
+
+STARTUP_RETRY_DELAYS = (5, 10, 20, 30, 30)
+
+
+def _is_transient_startup_error(error: Exception) -> bool:
+    """Return true for network errors that can clear after launchd starts us."""
+    if isinstance(error, (URLError, TimeoutError, ConnectionError, socket.gaierror)):
+        return True
+
+    cause = error.__cause__ or error.__context__
+    return isinstance(cause, (URLError, TimeoutError, ConnectionError, socket.gaierror))
 
 
 def create_bot_app(
@@ -219,10 +232,29 @@ def run_bot(
     bot_mode = mode or BOT_MODE
     streaming = enable_streaming if enable_streaming is not None else ENABLE_STREAMING
 
-    app, handler, scheduler = create_bot_app(
-        bot_token, app_token, enable_persistence, enable_proactive,
-        mode=bot_mode, enable_streaming=streaming
-    )
+    last_error: Exception | None = None
+    for attempt, delay in enumerate((*STARTUP_RETRY_DELAYS, None), start=1):
+        try:
+            app, handler, scheduler = create_bot_app(
+                bot_token, app_token, enable_persistence, enable_proactive,
+                mode=bot_mode, enable_streaming=streaming
+            )
+            break
+        except Exception as e:
+            last_error = e
+            if delay is None or not _is_transient_startup_error(e):
+                raise
+            logger.warning(
+                "Slack bot startup failed with a transient network error "
+                "(attempt %s/%s): %s; retrying in %s seconds",
+                attempt,
+                len(STARTUP_RETRY_DELAYS) + 1,
+                e,
+                delay,
+            )
+            time.sleep(delay)
+    else:
+        raise last_error or RuntimeError("Slack bot startup failed")
 
     logger.info("Starting Slack bot in Socket Mode...")
     print("Bot is running! Press Ctrl+C to stop.")

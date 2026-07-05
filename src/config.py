@@ -134,7 +134,7 @@ EMBEDDING_DIMENSIONS = 3072  # text-embedding-3-large default
 # Anthropic Configuration
 ANTHROPIC_API_KEY = get_env("ANTHROPIC_API_KEY")
 INTENT_MODEL = "claude-3-haiku-20240307"
-AGENT_MODEL = get_env("AGENT_MODEL", "claude-sonnet-4-20250514")
+AGENT_MODEL = get_env("AGENT_MODEL", "claude-sonnet-5")
 
 # Bot mode:
 # - "intent" for legacy intent routing with handlers
