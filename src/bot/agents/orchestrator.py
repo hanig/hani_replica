@@ -50,6 +50,7 @@ PERSONAL_DATA_KEYWORDS = [
     # Documents/Search
     "document", "doc", "file", "drive", "search my", "find my", "look up my",
     "in my", "from my", "my emails", "my calendar", "my slack",
+    "summarize what", "what we know", "dataset",
     # Briefing
     "briefing", "summary", "catch up", "what did i miss", "update me",
     # Slack

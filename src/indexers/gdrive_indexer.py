@@ -1,7 +1,7 @@
 """Google Drive content indexer."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from ..config import GOOGLE_ACCOUNTS, SYNC_BATCH_SIZE
@@ -102,7 +102,7 @@ class DriveIndexer:
         self.kg.set_last_sync(
             source="drive",
             account=account,
-            last_sync=datetime.now(timezone.utc),
+            last_sync=datetime.now(UTC),
             sync_token=start_page_token,
             metadata={"type": "full", "stats": stats},
         )
@@ -134,6 +134,9 @@ class DriveIndexer:
             "files_added": 0,
             "files_updated": 0,
             "files_deleted": 0,
+            "files_indexed": 0,
+            "content_indexed": 0,
+            "people_extracted": 0,
             "errors": 0,
         }
 
@@ -186,7 +189,7 @@ class DriveIndexer:
                         self.kg.set_last_sync(
                             source="drive",
                             account=account,
-                            last_sync=datetime.now(timezone.utc),
+                            last_sync=datetime.now(UTC),
                             sync_token=new_start_token,
                             metadata={"type": "delta", "stats": stats},
                         )
@@ -228,7 +231,7 @@ class DriveIndexer:
                     source_account=account,
                 )
                 if is_new:
-                    stats["people_extracted"] += 1
+                    _increment_stat(stats, "people_extracted")
 
                 # Add relationship
                 self.kg.add_relationship(
@@ -246,7 +249,7 @@ class DriveIndexer:
             if body:
                 # Truncate for storage
                 body = body[:50000]
-                stats["content_indexed"] += 1
+                _increment_stat(stats, "content_indexed")
 
         # Index the file metadata
         is_new = self.kg.upsert_content(
@@ -267,6 +270,11 @@ class DriveIndexer:
         )
 
         if is_new:
-            stats["files_indexed"] += 1
+            _increment_stat(stats, "files_indexed")
 
         return is_new
+
+
+def _increment_stat(stats: dict[str, int], key: str, amount: int = 1) -> None:
+    """Increment an indexer stat, tolerating older/narrow stat dictionaries."""
+    stats[key] = stats.get(key, 0) + amount

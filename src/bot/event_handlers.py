@@ -13,6 +13,7 @@ from slack_bolt import App
 from ..config import (
     BOT_MODE,
     ENABLE_STREAMING,
+    JOB_RETENTION_DAYS,
     SLACK_ALLOW_ALL_USERS,
     SLACK_AUTHORIZED_USERS,
     STREAMING_UPDATE_INTERVAL,
@@ -148,10 +149,31 @@ def register_event_handlers(
         ack()
         _handle_action_confirmation(body, client, confirmed=False)
 
+    @app.action(re.compile(r"^job_status:.*"))
+    def handle_job_status(ack, body, client) -> None:
+        """Handle background job status button."""
+        ack()
+        _handle_job_button(body, client, action="status")
+
+    @app.action(re.compile(r"^job_cancel:.*"))
+    def handle_job_cancel(ack, body, client) -> None:
+        """Handle background job cancel button."""
+        ack()
+        _handle_job_button(body, client, action="cancel")
+
+    @app.action(re.compile(r"^job_retry:.*"))
+    def handle_job_retry(ack, body, client) -> None:
+        """Handle background job retry button."""
+        ack()
+        _handle_job_button(body, client, action="retry")
+
     # Initialize security and audit
     security_guard = get_security_guard()
     audit_logger = get_audit_logger()
     job_store = JobStore()
+    deleted_jobs = job_store.cleanup(max_age_days=JOB_RETENTION_DAYS)
+    if deleted_jobs:
+        logger.info(f"Cleaned up {deleted_jobs} old background jobs")
     try:
         auth_response = app.client.auth_test()
         bot_user_id = auth_response.get("user_id")
@@ -397,6 +419,8 @@ def register_event_handlers(
         elif command.action == "status" and command.job_id:
             job = job_store.get_for_user(command.job_id, user_id)
             response = {"text": format_job_status(job)}
+            if job:
+                response["blocks"] = job_action_blocks(job)
         elif command.action == "cancel" and command.job_id:
             job = job_store.cancel(command.job_id, user_id)
             response = {"text": format_job_cancel_result(job, command.job_id)}
@@ -430,6 +454,81 @@ def register_event_handlers(
         conversation_manager.update(context)
         return True
 
+    def _handle_job_button(
+        body: dict,
+        client,
+        action: Literal["status", "cancel", "retry"],
+    ) -> None:
+        """Handle a Slack button for background jobs."""
+        user_id = body.get("user", {}).get("id")
+        channel_id = body.get("channel", {}).get("id")
+        message = body.get("message", {})
+        thread_ts = (
+            body.get("container", {}).get("thread_ts")
+            or message.get("thread_ts")
+            or message.get("ts")
+        )
+        action_id = body.get("actions", [{}])[0].get("action_id", "")
+        job_id = action_id.split(":", 1)[1] if ":" in action_id else ""
+
+        if not _is_authorized(user_id):
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text="Sorry, you're not authorized to use this bot.",
+            )
+            return
+
+        if action == "status":
+            job = job_store.get_for_user(job_id, user_id)
+            response = {"text": format_job_status(job)}
+            if job:
+                response["blocks"] = job_action_blocks(job)
+            _send_response_with_client(client, channel_id, thread_ts, response)
+            return
+
+        if action == "cancel":
+            job = job_store.cancel(job_id, user_id)
+            response = {"text": format_job_cancel_result(job, job_id)}
+            if job:
+                response["blocks"] = job_action_blocks(job_store.get(job.job_id) or job)
+            _send_response_with_client(client, channel_id, thread_ts, response)
+            return
+
+        if action == "retry":
+            job = job_store.get_for_user(job_id, user_id)
+            if job is None:
+                _send_response_with_client(
+                    client,
+                    channel_id,
+                    thread_ts,
+                    {"text": f"I couldn't find job `{job_id}` for your account."},
+                )
+                return
+            if job.status in {"queued", "running"}:
+                _send_response_with_client(
+                    client,
+                    channel_id,
+                    thread_ts,
+                    {"text": f"Job `{job.job_id}` is still {job.status}; cancel it before retrying."},
+                )
+                return
+
+            context = conversation_manager.get_or_create(
+                user_id=user_id,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+            )
+            _start_background_job(
+                text=job.message,
+                context=context,
+                client=client,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                user_id=user_id,
+                metadata={"retry_of": job.job_id},
+            )
+
     def _start_background_job(
         text: str,
         context,
@@ -455,6 +554,7 @@ def register_event_handlers(
             channel=channel_id,
             thread_ts=thread_ts,
             text=ack_text,
+            blocks=job_action_blocks(job),
         )
         job_store.update(job.job_id, status="running", message_ts=response.get("ts"))
         conversation_manager.update(context)
@@ -1409,6 +1509,51 @@ def format_job_cancel_result(job: BackgroundJob | None, job_id: str) -> str:
     if job.status == "cancelled":
         return f"Job `{job.job_id}` is cancelled."
     return f"Job `{job.job_id}` already finished with status `{job.status}`."
+
+
+def job_action_blocks(job: BackgroundJob) -> list[dict[str, Any]]:
+    """Build Slack action buttons for a background job."""
+    elements = [
+        {
+            "type": "button",
+            "text": {"type": "plain_text", "text": "Status"},
+            "action_id": f"job_status:{job.job_id}",
+            "value": job.job_id,
+        }
+    ]
+    if job.status in {"queued", "running"}:
+        elements.append({
+            "type": "button",
+            "text": {"type": "plain_text", "text": "Cancel"},
+            "style": "danger",
+            "action_id": f"job_cancel:{job.job_id}",
+            "value": job.job_id,
+            "confirm": {
+                "title": {"type": "plain_text", "text": "Cancel job?"},
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"Cancel background job `{job.job_id}`?",
+                },
+                "confirm": {"type": "plain_text", "text": "Cancel job"},
+                "deny": {"type": "plain_text", "text": "Keep running"},
+            },
+        })
+    else:
+        elements.append({
+            "type": "button",
+            "text": {"type": "plain_text", "text": "Retry"},
+            "style": "primary",
+            "action_id": f"job_retry:{job.job_id}",
+            "value": job.job_id,
+        })
+
+    return [
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": format_job_status(job)},
+        },
+        {"type": "actions", "elements": elements},
+    ]
 
 
 def _format_timestamp(timestamp: float) -> str:

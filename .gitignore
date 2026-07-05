@@ -57,6 +57,7 @@ htmlcov/
 .nox/
 evals/private/
 evals/*.private.jsonl
+evals/generated*.jsonl
 
 # ChromaDB
 chroma_data/

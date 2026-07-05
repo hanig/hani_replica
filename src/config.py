@@ -284,6 +284,7 @@ AUDIT_LOG_MESSAGES = get_env("AUDIT_LOG_MESSAGES", "false").lower() in ("true", 
 
 # Background job state
 JOB_DB_PATH = PROJECT_ROOT / get_env("JOB_DB_PATH", "data/jobs.db")
+JOB_RETENTION_DAYS = int(get_env("JOB_RETENTION_DAYS", "30"))
 
 # Structured runtime traces (metadata only; no raw Slack text by default)
 ENABLE_TRACE_LOG = get_env("ENABLE_TRACE_LOG", "true").lower() in ("true", "1", "yes")
@@ -345,6 +346,7 @@ def get_config() -> dict[str, Any]:
         "audit_log_messages": AUDIT_LOG_MESSAGES,
         "audit_retention_days": AUDIT_RETENTION_DAYS,
         "job_db_path": str(JOB_DB_PATH),
+        "job_retention_days": JOB_RETENTION_DAYS,
         "enable_trace_log": ENABLE_TRACE_LOG,
         "trace_log_path": str(TRACE_LOG_PATH),
     }

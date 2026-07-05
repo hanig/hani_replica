@@ -2,7 +2,13 @@
 
 import json
 
-from src.trace_summary import format_trace_summary, load_trace_records, summarize_trace_records
+from src.trace_summary import (
+    evaluate_trace_thresholds,
+    format_trace_summary,
+    format_trace_warnings,
+    load_trace_records,
+    summarize_trace_records,
+)
 
 
 def test_trace_summary_aggregates_models_tools_and_failures(tmp_path):
@@ -47,3 +53,17 @@ def test_trace_summary_aggregates_models_tools_and_failures(tmp_path):
     assert "claude-sonnet-5" in formatted
     assert "GetCalendarEventsTool" in formatted
     assert "RuntimeError" in formatted
+
+    warnings = evaluate_trace_thresholds(
+        summary,
+        {
+            "max_model_p95_ms": 150,
+            "max_tool_p95_ms": 25,
+            "max_tool_failure_rate": 0,
+            "max_model_tokens": 12,
+        },
+    )
+    warning_text = format_trace_warnings(warnings)
+    assert "failed calls" in warning_text
+    assert "p95 latency" in warning_text
+    assert "token usage" in warning_text

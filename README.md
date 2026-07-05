@@ -231,6 +231,7 @@ AUDIT_LOG_PATH=data/audit.db
 AUDIT_RETENTION_DAYS=90
 AUDIT_LOG_MESSAGES=false  # Store raw message text in audit logs
 JOB_DB_PATH=data/jobs.db
+JOB_RETENTION_DAYS=30
 ENABLE_TRACE_LOG=true
 TRACE_LOG_PATH=logs/traces.jsonl
 ```
@@ -329,8 +330,16 @@ python scripts/run_evals.py \
   --cases evals/slack_workflows.example.jsonl \
   --responses evals/responses.example.jsonl
 
+# Generate and score dry-run routing/safety predictions without model/tool calls
+python scripts/run_evals.py \
+  --cases evals/slack_workflows.example.jsonl \
+  --generate-predictions evals/generated.local.jsonl
+
 # Summarize metadata-only runtime traces
 python scripts/trace_summary.py
+
+# Fail automation when trace thresholds are exceeded
+python scripts/trace_summary.py --fail-on-warning
 ```
 
 ## Bot Modes

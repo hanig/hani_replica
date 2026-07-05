@@ -234,6 +234,48 @@ def score_predictions(
     ]
 
 
+def generate_dry_run_prediction(case: EvalCase) -> EvalPrediction:
+    """Generate a routing/safety prediction without model or tool calls."""
+    from .bot.agents.orchestrator import Orchestrator
+    from .bot.conversation import ConversationContext
+    from .bot.event_handlers import _should_run_background_job
+
+    context = ConversationContext(
+        user_id="eval-user",
+        channel_id="eval-channel",
+        thread_ts=case.id,
+    )
+    orchestrator = Orchestrator(api_key="eval-dry-run-key")
+    plan = orchestrator._plan_task(case.message, context)
+    agent = None
+    if len(plan.specialist_types) == 1:
+        agent = plan.specialist_types[0].value
+    elif len(plan.specialist_types) > 1:
+        agent = ",".join(agent_type.value for agent_type in plan.specialist_types)
+
+    background = _should_run_background_job(case.message)
+    confirmation_required = _message_requires_confirmation(case.message)
+    model_profile = _model_profile_for_prediction(
+        is_conversational=plan.is_conversational,
+        specialist_count=len(plan.specialist_types),
+    )
+
+    response = _synthetic_response(
+        case=case,
+        agent=agent,
+        background=background,
+        confirmation_required=confirmation_required,
+    )
+    return EvalPrediction(
+        id=case.id,
+        response=response,
+        agent=agent,
+        confirmation_required=confirmation_required,
+        background=background,
+        model_profile=model_profile,
+    )
+
+
 def _compare_expected(
     field_name: str,
     expected: Any,
@@ -244,3 +286,74 @@ def _compare_expected(
         return
     if actual != expected:
         mismatches.append(f"{field_name}: expected {expected!r}, got {actual!r}")
+
+
+def _message_requires_confirmation(message: str) -> bool:
+    normalized = f" {message.lower()} "
+    write_markers = (
+        " add ",
+        " cancel ",
+        " comment ",
+        " complete ",
+        " create ",
+        " draft ",
+        " move ",
+        " reopen ",
+        " reply ",
+        " reschedule ",
+        " send ",
+        " set ",
+        " update ",
+    )
+    write_targets = (
+        "calendar",
+        "doc",
+        "draft",
+        "email",
+        "event",
+        "github",
+        "issue",
+        "meeting",
+        "notion",
+        "paper",
+        "pr",
+        "task",
+        "todo",
+        "todoist",
+        "zotero",
+    )
+    return any(marker in normalized for marker in write_markers) and any(
+        target in normalized for target in write_targets
+    )
+
+
+def _model_profile_for_prediction(
+    *,
+    is_conversational: bool,
+    specialist_count: int,
+) -> str:
+    if is_conversational:
+        return "router"
+    if specialist_count > 1:
+        return "heavy"
+    return "agent"
+
+
+def _synthetic_response(
+    *,
+    case: EvalCase,
+    agent: str | None,
+    background: bool,
+    confirmation_required: bool,
+) -> str:
+    if background:
+        return "I will run that in the background and post the calendar and email result in-thread."
+    if confirmation_required:
+        if "draft" in case.message.lower():
+            return "Please confirm before I create that draft."
+        return "Please confirm before I make that change."
+    if agent == "calendar":
+        return "I will check the next calendar event."
+    if agent == "research":
+        return f"I will search the relevant notes for {case.message}."
+    return "I can help with that."

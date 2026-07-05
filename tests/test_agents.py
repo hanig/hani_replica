@@ -365,6 +365,15 @@ class TestOrchestrator:
         assert plan.needs_specialist is True
         assert AgentType.CALENDAR in plan.specialist_types
 
+    def test_plan_task_research_summary(self, context):
+        """Personal knowledge summary phrasing should route to research."""
+        orchestrator = Orchestrator(api_key="test-key")
+
+        plan = orchestrator._plan_task("summarize what we know about the Tahoe dataset", context)
+
+        assert plan.needs_specialist is True
+        assert AgentType.RESEARCH in plan.specialist_types
+
     def test_can_handle_always_returns_1(self, context):
         """Test orchestrator can_handle returns 1.0 for everything."""
         orchestrator = Orchestrator(api_key="test-key")

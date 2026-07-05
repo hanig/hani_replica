@@ -5,6 +5,13 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+DEFAULT_THRESHOLDS = {
+    "max_model_p95_ms": 20_000,
+    "max_tool_p95_ms": 10_000,
+    "max_tool_failure_rate": 0.05,
+    "max_model_tokens": 250_000,
+}
+
 
 def load_trace_records(path: str | Path) -> list[dict[str, Any]]:
     """Load JSONL trace records from disk."""
@@ -88,6 +95,52 @@ def format_trace_summary(summary: dict[str, Any]) -> str:
             lines.append(f"- {failure.get('event_type', 'event')} {target}: {error}")
 
     return "\n".join(lines)
+
+
+def evaluate_trace_thresholds(
+    summary: dict[str, Any],
+    thresholds: dict[str, float | int] | None = None,
+) -> list[str]:
+    """Return warning messages for trace metrics above thresholds."""
+    thresholds = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
+    warnings: list[str] = []
+
+    for model, stats in summary.get("models", {}).items():
+        if stats["failures"]:
+            warnings.append(f"Model {model} had {stats['failures']} failed calls")
+        if stats["p95_ms"] > thresholds["max_model_p95_ms"]:
+            warnings.append(
+                f"Model {model} p95 latency {stats['p95_ms']}ms exceeds "
+                f"{thresholds['max_model_p95_ms']}ms"
+            )
+        total_tokens = stats["input_tokens"] + stats["output_tokens"]
+        if total_tokens > thresholds["max_model_tokens"]:
+            warnings.append(
+                f"Model {model} token usage {total_tokens} exceeds "
+                f"{thresholds['max_model_tokens']}"
+            )
+
+    for tool, stats in summary.get("tools", {}).items():
+        if stats["p95_ms"] > thresholds["max_tool_p95_ms"]:
+            warnings.append(
+                f"Tool {tool} p95 latency {stats['p95_ms']}ms exceeds "
+                f"{thresholds['max_tool_p95_ms']}ms"
+            )
+        failure_rate = stats["failures"] / stats["calls"] if stats["calls"] else 0
+        if failure_rate > thresholds["max_tool_failure_rate"]:
+            warnings.append(
+                f"Tool {tool} failure rate {failure_rate:.1%} exceeds "
+                f"{thresholds['max_tool_failure_rate']:.1%}"
+            )
+
+    return warnings
+
+
+def format_trace_warnings(warnings: list[str]) -> str:
+    """Format trace threshold warnings."""
+    if not warnings:
+        return "No trace threshold warnings."
+    return "Trace threshold warnings:\n" + "\n".join(f"- {warning}" for warning in warnings)
 
 
 def _summarize_calls(records: list[dict[str, Any]]) -> dict[str, Any]:

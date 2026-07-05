@@ -60,6 +60,7 @@ All secrets in `.env`:
 - `ENABLE_STREAMING` and `STREAMING_UPDATE_INTERVAL` - Slack streaming behavior
 - `INTENT_MODEL`, `AGENT_MODEL`, `BRIEFING_MODEL`, `DEEP_RESEARCH_MODEL`, `IDEASPARK_MODEL`, `HEAVY_AGENT_MODEL` - Anthropic model profiles
 - `JOB_DB_PATH` - local SQLite state for long-running Slack background jobs
+- `JOB_RETENTION_DAYS` - retention for terminal background jobs
 - `ENABLE_TRACE_LOG`, `TRACE_LOG_PATH` - metadata-only model/tool trace logging
 
 ## Common Commands
@@ -91,7 +92,9 @@ python scripts/bot_healthcheck.py
 python scripts/model_smoke_test.py --all
 python scripts/run_evals.py --cases evals/slack_workflows.example.jsonl --list
 python scripts/run_evals.py --cases evals/slack_workflows.example.jsonl --responses evals/responses.example.jsonl
+python scripts/run_evals.py --cases evals/slack_workflows.example.jsonl --generate-predictions evals/generated.local.jsonl
 python scripts/trace_summary.py
+python scripts/trace_summary.py --fail-on-warning
 
 # Run tests
 pytest tests/
@@ -119,6 +122,7 @@ SQLite database with tables:
 - Agent and multi-agent modes use Claude tool calling
 - Long-running requests such as daily briefings and deep research are queued as local background jobs and answered in-thread
 - Users can inspect background jobs with `jobs`, `job status <id>`, `job cancel <id>`, and `job retry <id>`
+- Background job Slack messages include status/cancel/retry buttons; terminal jobs are cleaned up according to `JOB_RETENTION_DAYS`
 - Direct conversational turns use the router model profile, specialist tool work uses the agent profile, and multi-specialist synthesis uses the heavy profile
 - Model/tool traces are metadata-only by default; do not log raw Slack text or tool payloads without an explicit privacy review
 - Calendar "next/upcoming" answers use current local time and exclude already-ended events

@@ -11,6 +11,14 @@ Validate cases:
 python scripts/run_evals.py --cases evals/slack_workflows.example.jsonl --list
 ```
 
+Generate dry-run route/safety predictions without model or tool calls:
+
+```bash
+python scripts/run_evals.py \
+  --cases evals/slack_workflows.example.jsonl \
+  --generate-predictions evals/generated.local.jsonl
+```
+
 Score saved responses:
 
 ```bash

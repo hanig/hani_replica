@@ -1,11 +1,10 @@
 """Research specialist agent."""
 
 import logging
-from typing import Any
 
-from .base import BaseAgent, AgentType
-from ..conversation import ConversationContext
 from ...config import ZOTERO_DEFAULT_COLLECTION
+from ..conversation import ConversationContext
+from .base import AgentType, BaseAgent
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +13,8 @@ logger = logging.getLogger(__name__)
 RESEARCH_KEYWORDS = {
     "search", "find", "look", "what", "where", "who",
     "information", "about", "related", "document", "file",
-    "drive", "note", "summary", "briefing", "overview",
+    "drive", "note", "summary", "summarize", "briefing", "overview",
+    "dataset",
     "task", "tasks", "todoist", "todo", "to-do",
     "notion", "page", "database",
     "paper", "papers", "zotero", "reference", "references",

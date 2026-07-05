@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..config import JOB_DB_PATH
+from ..config import JOB_DB_PATH, JOB_RETENTION_DAYS
 
 ACTIVE_JOB_STATUSES = {"queued", "running"}
 TERMINAL_JOB_STATUSES = {"succeeded", "failed", "cancelled"}
@@ -214,6 +214,20 @@ class JobStore:
                     (limit,),
                 ).fetchall()
         return [_row_to_job(row) for row in rows]
+
+    def cleanup(self, max_age_days: int = JOB_RETENTION_DAYS) -> int:
+        """Delete old terminal jobs and return the number removed."""
+        cutoff = time.time() - (max_age_days * 86400)
+        placeholders = ", ".join("?" for _ in TERMINAL_JOB_STATUSES)
+        with self._connection() as conn:
+            cursor = conn.execute(
+                f"""
+                DELETE FROM jobs
+                WHERE status IN ({placeholders}) AND updated_at < ?
+                """,
+                (*sorted(TERMINAL_JOB_STATUSES), cutoff),
+            )
+            return cursor.rowcount
 
 
 def _row_to_job(row: sqlite3.Row) -> BackgroundJob:

@@ -7,6 +7,7 @@ import pytest
 from src.evals import (
     EvalCase,
     EvalPrediction,
+    generate_dry_run_prediction,
     load_eval_cases,
     load_eval_predictions,
     load_response_map,
@@ -122,3 +123,19 @@ def test_score_prediction_checks_route_and_safety_metadata():
     assert not failed.passed
     assert any("agent" in mismatch for mismatch in failed.mismatches)
     assert any("confirmation_required" in mismatch for mismatch in failed.mismatches)
+
+
+def test_generate_dry_run_prediction_routes_without_api_calls():
+    """Dry-run predictions infer routing and safety without calling models."""
+    briefing = generate_dry_run_prediction(
+        EvalCase(id="briefing.today", message="give me daily briefing")
+    )
+    draft = generate_dry_run_prediction(
+        EvalCase(id="email.draft", message="draft a reply to Alex")
+    )
+
+    assert briefing.agent == "research"
+    assert briefing.background is True
+    assert briefing.model_profile == "agent"
+    assert draft.agent == "email"
+    assert draft.confirmation_required is True
