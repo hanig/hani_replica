@@ -1,13 +1,15 @@
 """Chat handler for natural conversation."""
 
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 from anthropic import Anthropic
 
-from ...config import ANTHROPIC_API_KEY
+from ...config import ANTHROPIC_API_KEY, INTENT_MODEL
 from ..conversation import ConversationContext
 from ..intent_router import Intent
+from ..tracing import get_trace_logger, model_usage
 from .base import BaseHandler
 
 if TYPE_CHECKING:
@@ -76,17 +78,37 @@ class ChatHandler(BaseHandler):
         system_prompt = self._build_system_prompt(context.user_id)
 
         try:
+            call_started = time.perf_counter()
             response = self.client.messages.create(
-                model="claude-3-haiku-20240307",
+                model=INTENT_MODEL,
                 max_tokens=300,
                 system=system_prompt,
                 messages=messages,
             )
+            get_trace_logger().log_model_call(
+                caller="handler.chat",
+                model=INTENT_MODEL,
+                operation="messages.create",
+                duration_ms=(time.perf_counter() - call_started) * 1000,
+                success=True,
+                usage=model_usage(response),
+                stop_reason=getattr(response, "stop_reason", None),
+            )
+            call_started = None
 
             response_text = response.content[0].text
             return {"text": response_text}
 
         except Exception as e:
+            if "call_started" in locals() and call_started is not None:
+                get_trace_logger().log_model_call(
+                    caller="handler.chat",
+                    model=INTENT_MODEL,
+                    operation="messages.create",
+                    duration_ms=(time.perf_counter() - call_started) * 1000,
+                    success=False,
+                    error=e,
+                )
             logger.error(f"Error generating chat response: {e}")
             # Fallback to simple responses for common cases
             return {"text": self._fallback_response(message)}

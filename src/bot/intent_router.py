@@ -2,12 +2,14 @@
 
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
 from anthropic import Anthropic
 
 from ..config import ANTHROPIC_API_KEY, INTENT_MODEL
+from .tracing import get_trace_logger, model_usage
 
 logger = logging.getLogger(__name__)
 
@@ -168,12 +170,23 @@ class IntentRouter:
 
             prompt = f"{context}User: {text}"
 
+            call_started = time.perf_counter()
             response = self._client.messages.create(
                 model=self.model,
                 max_tokens=200,
                 system=SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": prompt}],
             )
+            get_trace_logger().log_model_call(
+                caller="intent_router",
+                model=self.model,
+                operation="messages.create",
+                duration_ms=(time.perf_counter() - call_started) * 1000,
+                success=True,
+                usage=model_usage(response),
+                stop_reason=getattr(response, "stop_reason", None),
+            )
+            call_started = None
 
             # Parse response
             raw_text = response.content[0].text.strip()
@@ -201,6 +214,15 @@ class IntentRouter:
                 return self._keyword_fallback(text)
 
         except Exception as e:
+            if "call_started" in locals() and call_started is not None:
+                get_trace_logger().log_model_call(
+                    caller="intent_router",
+                    model=self.model,
+                    operation="messages.create",
+                    duration_ms=(time.perf_counter() - call_started) * 1000,
+                    success=False,
+                    error=e,
+                )
             logger.error(f"Error classifying intent: {e}")
             return self._keyword_fallback(text)
 

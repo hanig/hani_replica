@@ -2,7 +2,10 @@
 
 import logging
 import re
+import threading
 import time
+from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 from slack_bolt import App
@@ -18,6 +21,7 @@ from .audit import AuditEventType, get_audit_logger
 from .conversation import ConversationManager
 from .formatters import format_error_message, format_help_message, markdown_to_slack
 from .intent_router import Intent, IntentRouter
+from .jobs import BackgroundJob, JobStore
 from .security import get_security_guard
 
 if TYPE_CHECKING:
@@ -27,6 +31,28 @@ if TYPE_CHECKING:
     from .user_memory import UserMemory
 
 logger = logging.getLogger(__name__)
+
+BACKGROUND_PATTERNS = (
+    "daily briefing",
+    "briefing",
+    "what did i miss",
+    "catch me up",
+    "deep research",
+    "comprehensive research",
+    "long research",
+    "research plan",
+    "summarize everything",
+)
+
+JOB_ID_RE = r"[0-9a-f]{12}"
+
+
+@dataclass(frozen=True)
+class JobCommand:
+    """Parsed Slack command for background jobs."""
+
+    action: Literal["help", "list", "status", "cancel", "retry"]
+    job_id: str | None = None
 
 
 def register_event_handlers(
@@ -125,6 +151,7 @@ def register_event_handlers(
     # Initialize security and audit
     security_guard = get_security_guard()
     audit_logger = get_audit_logger()
+    job_store = JobStore()
     try:
         auth_response = app.client.auth_test()
         bot_user_id = auth_response.get("user_id")
@@ -220,8 +247,32 @@ def register_event_handlers(
             thread_ts=thread_ts,
         )
 
+        job_command = parse_job_command(text)
+        if job_command:
+            if _handle_job_command(
+                command=job_command,
+                context=context,
+                client=client,
+                say=say,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                user_id=user_id,
+            ):
+                return
+
         # Add user message to history
         context.add_message("user", text)
+
+        if not context.pending_action and _should_run_background_job(text):
+            _start_background_job(
+                text=text,
+                context=context,
+                client=client,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                user_id=user_id,
+            )
+            return
 
         try:
             if bot_mode == "multi_agent" and orchestrator:
@@ -327,6 +378,198 @@ def register_event_handlers(
                 channel_id=channel_id,
                 details={"message": text[:100]},
             )
+
+    def _handle_job_command(
+        command: JobCommand,
+        context,
+        client,
+        say,
+        channel_id: str,
+        thread_ts: str,
+        user_id: str,
+    ) -> bool:
+        """Handle a parsed background-job command."""
+        if command.action == "help":
+            response = {"text": format_job_help()}
+        elif command.action == "list":
+            jobs = job_store.list_recent(user_id=user_id, limit=10)
+            response = {"text": format_recent_jobs(jobs)}
+        elif command.action == "status" and command.job_id:
+            job = job_store.get_for_user(command.job_id, user_id)
+            response = {"text": format_job_status(job)}
+        elif command.action == "cancel" and command.job_id:
+            job = job_store.cancel(command.job_id, user_id)
+            response = {"text": format_job_cancel_result(job, command.job_id)}
+        elif command.action == "retry" and command.job_id:
+            job = job_store.get_for_user(command.job_id, user_id)
+            if job is None:
+                response = {"text": f"I couldn't find job `{command.job_id}` for your account."}
+            elif job.status in {"queued", "running"}:
+                response = {"text": f"Job `{job.job_id}` is still {job.status}; cancel it before retrying."}
+            else:
+                _start_background_job(
+                    text=job.message,
+                    context=context,
+                    client=client,
+                    channel_id=channel_id,
+                    thread_ts=thread_ts,
+                    user_id=user_id,
+                    metadata={"retry_of": job.job_id},
+                )
+                return True
+        else:
+            response = {"text": format_job_help()}
+
+        _send_response(say, response, thread_ts)
+        audit_logger.log_message_sent(
+            channel_id=channel_id,
+            message=response.get("text", ""),
+            thread_ts=thread_ts,
+            user_id=user_id,
+        )
+        conversation_manager.update(context)
+        return True
+
+    def _start_background_job(
+        text: str,
+        context,
+        client,
+        channel_id: str,
+        thread_ts: str,
+        user_id: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Queue and start a background job for a long-running request."""
+        job = job_store.create(
+            user_id=user_id,
+            channel_id=channel_id,
+            thread_ts=thread_ts,
+            message=text,
+            metadata={"mode": bot_mode, **(metadata or {})},
+        )
+        ack_text = (
+            f"Working on that in the background. Job `{job.job_id}` is running; "
+            "I'll post the result in this thread."
+        )
+        response = client.chat_postMessage(
+            channel=channel_id,
+            thread_ts=thread_ts,
+            text=ack_text,
+        )
+        job_store.update(job.job_id, status="running", message_ts=response.get("ts"))
+        conversation_manager.update(context)
+        audit_logger.log_message_sent(
+            channel_id=channel_id,
+            message=ack_text,
+            thread_ts=thread_ts,
+            user_id=user_id,
+        )
+
+        worker = threading.Thread(
+            target=_run_background_job,
+            name=f"engram-job-{job.job_id}",
+            args=(job.job_id, text, context, client, channel_id, thread_ts, user_id),
+            daemon=True,
+        )
+        worker.start()
+
+    def _run_background_job(
+        job_id: str,
+        text: str,
+        context,
+        client,
+        channel_id: str,
+        thread_ts: str,
+        user_id: str,
+    ) -> None:
+        """Execute a background job and post the final result."""
+        try:
+            if job_store.is_cancelled(job_id):
+                logger.info(f"Background job {job_id} was cancelled before execution")
+                return
+
+            response, intent = _handle_message_without_streaming(text, context)
+            if job_store.is_cancelled(job_id):
+                logger.info(f"Background job {job_id} was cancelled before posting result")
+                return
+
+            if response:
+                context.add_message("assistant", response.get("text", ""))
+                conversation_manager.update(context)
+                _send_response_with_client(client, channel_id, thread_ts, response)
+                audit_logger.log_message_sent(
+                    channel_id=channel_id,
+                    message=response.get("text", ""),
+                    thread_ts=thread_ts,
+                    user_id=user_id,
+                )
+                if feedback_loop and intent:
+                    pattern = " ".join(text.lower().split())
+                    feedback_loop.record_query_pattern(
+                        user_id=user_id,
+                        pattern=pattern,
+                        intent=intent.intent,
+                        success=True,
+                    )
+                job_store.update(
+                    job_id,
+                    status="succeeded",
+                    result_preview=response.get("text", "")[:500],
+                )
+            else:
+                fallback_msg = "I finished the background job, but did not get a response."
+                client.chat_postMessage(
+                    channel=channel_id,
+                    thread_ts=thread_ts,
+                    text=fallback_msg,
+                )
+                if not job_store.is_cancelled(job_id):
+                    job_store.update(job_id, status="failed", error="No response generated")
+        except Exception as e:
+            logger.error(f"Background job {job_id} failed: {e}", exc_info=True)
+            if job_store.is_cancelled(job_id):
+                return
+            error_msg = format_error_message(
+                "I hit an internal error while running that background job."
+            )
+            client.chat_postMessage(
+                channel=channel_id,
+                thread_ts=thread_ts,
+                text=error_msg,
+            )
+            job_store.update(job_id, status="failed", error=str(e))
+            audit_logger.log_error(
+                error=str(e),
+                user_id=user_id,
+                channel_id=channel_id,
+                details={"job_id": job_id, "message": text[:100]},
+            )
+
+    def _handle_message_without_streaming(
+        text: str,
+        context,
+    ) -> tuple[dict[str, Any] | None, Intent | None]:
+        """Process a message without Slack streaming for background jobs."""
+        if bot_mode == "multi_agent" and orchestrator:
+            return _handle_with_multi_agent(
+                text=text,
+                context=context,
+                orchestrator=orchestrator,
+            )
+        if bot_mode == "agent" and agent_executor:
+            return _handle_with_agent(
+                text=text,
+                context=context,
+                agent_executor=agent_executor,
+            )
+        if context.pending_action:
+            return _handle_pending_action_input(context, text, handlers), None
+        return _route_message(
+            text=text,
+            context=context,
+            intent_router=intent_router,
+            handlers=handlers,
+        )
 
     def _handle_action_confirmation(body: dict, client, confirmed: bool) -> None:
         """Handle action confirmation or cancellation."""
@@ -1057,3 +1300,129 @@ def _send_response(say, response: dict, thread_ts: str) -> None:
         kwargs["text"] = markdown_to_slack(response.get("text", ""))
 
     say(**kwargs)
+
+
+def _send_response_with_client(
+    client,
+    channel_id: str,
+    thread_ts: str,
+    response: dict,
+) -> None:
+    """Send a response via Slack WebClient."""
+    if response.get("_streaming_sent"):
+        return
+
+    kwargs = {
+        "channel": channel_id,
+        "thread_ts": thread_ts,
+    }
+    if "blocks" in response:
+        kwargs["blocks"] = response["blocks"]
+        kwargs["text"] = markdown_to_slack(response.get("text", ""))
+    else:
+        kwargs["text"] = markdown_to_slack(response.get("text", ""))
+
+    client.chat_postMessage(**kwargs)
+
+
+def parse_job_command(text: str) -> JobCommand | None:
+    """Parse a text command for background jobs."""
+    normalized = " ".join(text.strip().lower().replace("`", "").split())
+    if normalized in {"job help", "jobs help", "help jobs", "help job"}:
+        return JobCommand(action="help")
+    if normalized in {"jobs", "job list", "jobs list", "job recent", "recent jobs", "show jobs"}:
+        return JobCommand(action="list")
+
+    status_match = re.fullmatch(
+        rf"(?:job\s+)?(?:status\s+)?(?P<job_id>{JOB_ID_RE})|status\s+job\s+(?P<status_id>{JOB_ID_RE})",
+        normalized,
+    )
+    if status_match:
+        return JobCommand(action="status", job_id=status_match.group("job_id") or status_match.group("status_id"))
+
+    cancel_match = re.fullmatch(
+        rf"(?:job\s+cancel|cancel\s+job)\s+(?P<job_id>{JOB_ID_RE})",
+        normalized,
+    )
+    if cancel_match:
+        return JobCommand(action="cancel", job_id=cancel_match.group("job_id"))
+
+    retry_match = re.fullmatch(
+        rf"(?:job\s+retry|retry\s+job)\s+(?P<job_id>{JOB_ID_RE})",
+        normalized,
+    )
+    if retry_match:
+        return JobCommand(action="retry", job_id=retry_match.group("job_id"))
+
+    return None
+
+
+def format_job_help() -> str:
+    """Return concise job command help text."""
+    return (
+        "Background job commands:\n"
+        "- `jobs` - show your recent jobs\n"
+        "- `job status <id>` - show one job\n"
+        "- `job cancel <id>` - cancel a queued/running job\n"
+        "- `job retry <id>` - retry a finished or failed job"
+    )
+
+
+def format_recent_jobs(jobs: list[BackgroundJob]) -> str:
+    """Format a user's recent background jobs."""
+    if not jobs:
+        return "You do not have any recent background jobs."
+
+    lines = ["Recent background jobs:"]
+    for job in jobs:
+        lines.append(
+            f"- `{job.job_id}` {job.status} - {_preview_text(job.message, 70)}"
+            f" (updated {_format_timestamp(job.updated_at)})"
+        )
+    return "\n".join(lines)
+
+
+def format_job_status(job: BackgroundJob | None) -> str:
+    """Format detailed status for one background job."""
+    if job is None:
+        return "I could not find that background job for your account."
+
+    lines = [
+        f"Job `{job.job_id}` is *{job.status}*.",
+        f"Request: {_preview_text(job.message, 180)}",
+        f"Created: {_format_timestamp(job.created_at)}",
+        f"Updated: {_format_timestamp(job.updated_at)}",
+    ]
+    if job.metadata.get("retry_of"):
+        lines.append(f"Retry of: `{job.metadata['retry_of']}`")
+    if job.result_preview:
+        lines.append(f"Result preview: {_preview_text(job.result_preview, 180)}")
+    if job.error:
+        lines.append(f"Note: {_preview_text(job.error, 180)}")
+    return "\n".join(lines)
+
+
+def format_job_cancel_result(job: BackgroundJob | None, job_id: str) -> str:
+    """Format the result of a cancel request."""
+    if job is None:
+        return f"I could not find job `{job_id}` for your account."
+    if job.status == "cancelled":
+        return f"Job `{job.job_id}` is cancelled."
+    return f"Job `{job.job_id}` already finished with status `{job.status}`."
+
+
+def _format_timestamp(timestamp: float) -> str:
+    return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M")
+
+
+def _preview_text(text: str, limit: int) -> str:
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "..."
+
+
+def _should_run_background_job(text: str) -> bool:
+    """Return true for requests likely to exceed Slack's interactive window."""
+    normalized = " ".join(text.lower().split())
+    return any(pattern in normalized for pattern in BACKGROUND_PATTERNS)

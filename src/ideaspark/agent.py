@@ -6,7 +6,7 @@ from datetime import datetime
 
 import anthropic
 
-from src.config import ANTHROPIC_API_KEY, AGENT_MODEL, get_user_timezone
+from src.config import ANTHROPIC_API_KEY, IDEASPARK_MODEL, get_user_timezone
 from src.ideaspark.corpus import PaperCorpus
 from src.ideaspark.deep_research import DeepResearcher
 from src.ideaspark.literature import LiteratureMonitor
@@ -396,7 +396,7 @@ class IdeaSparkAgent:
             # Call Claude
             try:
                 response = self.client.messages.create(
-                    model=AGENT_MODEL,
+                    model=IDEASPARK_MODEL,
                     max_tokens=2000,
                     system=SYSTEM_PROMPT,
                     messages=[{"role": "user", "content": prompt}],

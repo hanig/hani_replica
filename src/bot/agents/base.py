@@ -1,6 +1,7 @@
 """Base agent class for specialized domain agents."""
 
 import logging
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Generator
 from dataclasses import dataclass, field
@@ -13,6 +14,7 @@ from anthropic import Anthropic
 from ...config import AGENT_MODEL, ANTHROPIC_API_KEY, get_user_timezone
 from ..conversation import ConversationContext
 from ..tools import get_tool_schemas
+from ..tracing import get_trace_logger, model_usage
 from ..user_memory import UserMemory
 
 logger = logging.getLogger(__name__)
@@ -98,6 +100,7 @@ class BaseAgent(ABC):
         self.client = Anthropic(api_key=self.api_key)
         self.model = model or AGENT_MODEL
         self.user_memory = user_memory
+        self.trace_logger = get_trace_logger()
 
         # Initialize tool executor (lazy loaded)
         self._tool_executor = None
@@ -230,8 +233,10 @@ class BaseAgent(ABC):
         while iterations < max_iter:
             iterations += 1
             logger.info(f"{self.AGENT_TYPE.value} agent iteration {iterations}")
+            model_call_started = None
 
             try:
+                model_call_started = time.perf_counter()
                 response = self.client.messages.create(
                     model=self.model,
                     max_tokens=4096,
@@ -239,6 +244,16 @@ class BaseAgent(ABC):
                     tools=tools if tools else None,
                     messages=messages,
                 )
+                self.trace_logger.log_model_call(
+                    caller=f"agent.{self.AGENT_TYPE.value}",
+                    model=self.model,
+                    operation="messages.create",
+                    duration_ms=(time.perf_counter() - model_call_started) * 1000,
+                    success=True,
+                    usage=model_usage(response),
+                    stop_reason=getattr(response, "stop_reason", None),
+                )
+                model_call_started = None
 
                 # Check if we're done
                 if response.stop_reason == "end_turn":
@@ -272,10 +287,34 @@ class BaseAgent(ABC):
                             logger.info(f"Executing tool: {tool_name}")
 
                             # Execute tool
-                            result = self.tool_executor.execute(
-                                tool_name,
-                                tool_input,
-                                context=context,
+                            tool_started = time.perf_counter()
+                            try:
+                                result = self.tool_executor.execute(
+                                    tool_name,
+                                    tool_input,
+                                    context=context,
+                                )
+                            except Exception as e:
+                                self.trace_logger.log_tool_call(
+                                    caller=f"agent.{self.AGENT_TYPE.value}",
+                                    tool_name=tool_name,
+                                    duration_ms=(time.perf_counter() - tool_started) * 1000,
+                                    success=False,
+                                    input_keys=list(tool_input.keys())
+                                    if isinstance(tool_input, dict)
+                                    else [],
+                                    error=e,
+                                )
+                                raise
+                            self.trace_logger.log_tool_call(
+                                caller=f"agent.{self.AGENT_TYPE.value}",
+                                tool_name=tool_name,
+                                duration_ms=(time.perf_counter() - tool_started) * 1000,
+                                success=result.success,
+                                input_keys=list(tool_input.keys())
+                                if isinstance(tool_input, dict)
+                                else [],
+                                result_preview=result.to_content()[:300],
                             )
 
                             # Record tool call
@@ -325,6 +364,15 @@ class BaseAgent(ABC):
                     )
 
             except Exception as e:
+                if model_call_started is not None:
+                    self.trace_logger.log_model_call(
+                        caller=f"agent.{self.AGENT_TYPE.value}",
+                        model=self.model,
+                        operation="messages.create",
+                        duration_ms=(time.perf_counter() - model_call_started) * 1000,
+                        success=False,
+                        error=e,
+                    )
                 logger.error(f"Agent error: {e}", exc_info=True)
                 return AgentResult(
                     response=f"I encountered an error: {str(e)}",
@@ -375,8 +423,10 @@ class BaseAgent(ABC):
         while iterations < max_iter:
             iterations += 1
             logger.info(f"{self.AGENT_TYPE.value} agent streaming iteration {iterations}")
+            model_call_started = None
 
             try:
+                model_call_started = time.perf_counter()
                 with self.client.messages.stream(
                     model=self.model,
                     max_tokens=4096,
@@ -418,6 +468,16 @@ class BaseAgent(ABC):
 
                     # Get final message
                     response = stream.get_final_message()
+                self.trace_logger.log_model_call(
+                    caller=f"agent.{self.AGENT_TYPE.value}",
+                    model=self.model,
+                    operation="messages.stream",
+                    duration_ms=(time.perf_counter() - model_call_started) * 1000,
+                    success=True,
+                    usage=model_usage(response),
+                    stop_reason=getattr(response, "stop_reason", None),
+                )
+                model_call_started = None
 
                 # Process response
                 if response.stop_reason == "end_turn":
@@ -468,10 +528,34 @@ class BaseAgent(ABC):
                                 iteration=iterations,
                             )
 
-                            result = self.tool_executor.execute(
-                                tool_name,
-                                tool_input,
-                                context=context,
+                            tool_started = time.perf_counter()
+                            try:
+                                result = self.tool_executor.execute(
+                                    tool_name,
+                                    tool_input,
+                                    context=context,
+                                )
+                            except Exception as e:
+                                self.trace_logger.log_tool_call(
+                                    caller=f"agent.{self.AGENT_TYPE.value}",
+                                    tool_name=tool_name,
+                                    duration_ms=(time.perf_counter() - tool_started) * 1000,
+                                    success=False,
+                                    input_keys=list(tool_input.keys())
+                                    if isinstance(tool_input, dict)
+                                    else [],
+                                    error=e,
+                                )
+                                raise
+                            self.trace_logger.log_tool_call(
+                                caller=f"agent.{self.AGENT_TYPE.value}",
+                                tool_name=tool_name,
+                                duration_ms=(time.perf_counter() - tool_started) * 1000,
+                                success=result.success,
+                                input_keys=list(tool_input.keys())
+                                if isinstance(tool_input, dict)
+                                else [],
+                                result_preview=result.to_content()[:300],
                             )
 
                             tool_calls_history.append({
@@ -540,6 +624,15 @@ class BaseAgent(ABC):
                     )
 
             except Exception as e:
+                if model_call_started is not None:
+                    self.trace_logger.log_model_call(
+                        caller=f"agent.{self.AGENT_TYPE.value}",
+                        model=self.model,
+                        operation="messages.stream",
+                        duration_ms=(time.perf_counter() - model_call_started) * 1000,
+                        success=False,
+                        error=e,
+                    )
                 logger.error(f"Agent streaming error: {e}", exc_info=True)
                 yield AgentStreamEvent(
                     event_type="error",

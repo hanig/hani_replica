@@ -1,21 +1,21 @@
 """Orchestrator agent that coordinates specialist agents."""
 
-import json
 import logging
+import time
+from collections.abc import Generator
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Generator
+from typing import Any
 
-from anthropic import Anthropic
-
-from .base import BaseAgent, AgentType, AgentResult, AgentStreamEvent
+from ...config import HEAVY_AGENT_MODEL, INTENT_MODEL
+from ..conversation import ConversationContext
+from ..tracing import model_usage
+from ..user_memory import UserMemory
+from .base import AgentResult, AgentStreamEvent, AgentType, BaseAgent
 from .calendar_agent import CalendarAgent
 from .email_agent import EmailAgent
 from .github_agent import GitHubAgent
 from .research_agent import ResearchAgent
-from ..conversation import ConversationContext
-from ..user_memory import UserMemory
-from ...config import ANTHROPIC_API_KEY, AGENT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -335,14 +335,34 @@ GUIDELINES:
         messages = self._build_messages(context, message)
 
         try:
+            call_started = time.perf_counter()
             response = self.client.messages.create(
-                model=self.model,
+                model=INTENT_MODEL,
                 max_tokens=2048,
                 system=system,
                 messages=messages,
             )
+            self.trace_logger.log_model_call(
+                caller="agent.orchestrator.direct",
+                model=INTENT_MODEL,
+                operation="messages.create",
+                duration_ms=(time.perf_counter() - call_started) * 1000,
+                success=True,
+                usage=model_usage(response),
+                stop_reason=getattr(response, "stop_reason", None),
+            )
+            call_started = None
             return self._extract_text(response) or "I'm here to help! What would you like to know?"
         except Exception as e:
+            if "call_started" in locals() and call_started is not None:
+                    self.trace_logger.log_model_call(
+                        caller="agent.orchestrator.direct",
+                        model=INTENT_MODEL,
+                        operation="messages.create",
+                        duration_ms=(time.perf_counter() - call_started) * 1000,
+                    success=False,
+                    error=e,
+                )
             logger.error(f"Direct response error: {e}")
             return "I encountered an error. Could you try rephrasing your question?"
 
@@ -538,11 +558,22 @@ Please synthesize these results into a single, coherent response that:
 Provide the synthesized response:"""
 
         try:
+            call_started = time.perf_counter()
             response = self.client.messages.create(
-                model=self.model,
+                model=HEAVY_AGENT_MODEL,
                 max_tokens=2048,
                 messages=[{"role": "user", "content": synthesis_prompt}],
             )
+            self.trace_logger.log_model_call(
+                caller="agent.orchestrator.synthesis",
+                model=HEAVY_AGENT_MODEL,
+                operation="messages.create",
+                duration_ms=(time.perf_counter() - call_started) * 1000,
+                success=True,
+                usage=model_usage(response),
+                stop_reason=getattr(response, "stop_reason", None),
+            )
+            call_started = None
 
             synthesized = response.content[0].text if response.content else ""
 
@@ -565,6 +596,15 @@ Provide the synthesized response:"""
             )
 
         except Exception as e:
+            if "call_started" in locals() and call_started is not None:
+                    self.trace_logger.log_model_call(
+                        caller="agent.orchestrator.synthesis",
+                        model=HEAVY_AGENT_MODEL,
+                        operation="messages.create",
+                        duration_ms=(time.perf_counter() - call_started) * 1000,
+                    success=False,
+                    error=e,
+                )
             logger.error(f"Synthesis error: {e}", exc_info=True)
             # Fallback: concatenate responses
             combined = "\n\n".join([r.response for r in results])

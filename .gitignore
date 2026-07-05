@@ -50,10 +50,13 @@ env/
 
 # Testing
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 .tox/
 .nox/
+evals/private/
+evals/*.private.jsonl
 
 # ChromaDB
 chroma_data/

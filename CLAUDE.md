@@ -58,6 +58,9 @@ All secrets in `.env`:
 - `USER_TIMEZONE` - IANA timezone used for calendar and relative date handling
 - `BOT_MODE` - `intent`, `agent`, or `multi_agent`
 - `ENABLE_STREAMING` and `STREAMING_UPDATE_INTERVAL` - Slack streaming behavior
+- `INTENT_MODEL`, `AGENT_MODEL`, `BRIEFING_MODEL`, `DEEP_RESEARCH_MODEL`, `IDEASPARK_MODEL`, `HEAVY_AGENT_MODEL` - Anthropic model profiles
+- `JOB_DB_PATH` - local SQLite state for long-running Slack background jobs
+- `ENABLE_TRACE_LOG`, `TRACE_LOG_PATH` - metadata-only model/tool trace logging
 
 ## Common Commands
 
@@ -84,6 +87,12 @@ python scripts/run_bot.py
 # Check/restart launchd bot service if unhealthy
 python scripts/bot_healthcheck.py
 
+# Smoke-test model profiles and validate synthetic eval cases
+python scripts/model_smoke_test.py --all
+python scripts/run_evals.py --cases evals/slack_workflows.example.jsonl --list
+python scripts/run_evals.py --cases evals/slack_workflows.example.jsonl --responses evals/responses.example.jsonl
+python scripts/trace_summary.py
+
 # Run tests
 pytest tests/
 ```
@@ -108,6 +117,10 @@ SQLite database with tables:
 - Claude Haiku for intent classification
 - Multi-turn conversations with 30-min TTL
 - Agent and multi-agent modes use Claude tool calling
+- Long-running requests such as daily briefings and deep research are queued as local background jobs and answered in-thread
+- Users can inspect background jobs with `jobs`, `job status <id>`, `job cancel <id>`, and `job retry <id>`
+- Direct conversational turns use the router model profile, specialist tool work uses the agent profile, and multi-specialist synthesis uses the heavy profile
+- Model/tool traces are metadata-only by default; do not log raw Slack text or tool payloads without an explicit privacy review
 - Calendar "next/upcoming" answers use current local time and exclude already-ended events
 - Calendar create/update/cancel, Google Doc comments/replies/resolution, Todoist creates/updates/comments/completions/reopens, notification-setting changes, and other writes require Slack button confirmation
 

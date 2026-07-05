@@ -4,13 +4,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.bot.agents.base import BaseAgent, AgentType, AgentResult, AgentStreamEvent
+from src.bot.agents.base import AgentResult, AgentStreamEvent, AgentType
 from src.bot.agents.calendar_agent import CalendarAgent
 from src.bot.agents.email_agent import EmailAgent
 from src.bot.agents.github_agent import GitHubAgent
-from src.bot.agents.research_agent import ResearchAgent
 from src.bot.agents.orchestrator import Orchestrator, TaskPlan
+from src.bot.agents.research_agent import ResearchAgent
 from src.bot.conversation import ConversationContext
+from src.config import HEAVY_AGENT_MODEL, INTENT_MODEL
 
 
 # Patch the base module's ANTHROPIC_API_KEY for all tests
@@ -496,6 +497,51 @@ class TestOrchestratorRun:
         assert result.success is True
         # Result should come from calendar specialist
         assert result.agent_type == AgentType.CALENDAR
+
+    @patch("src.bot.agents.base.Anthropic")
+    def test_direct_response_uses_router_model(self, mock_anthropic, context):
+        """Simple direct responses should use the router profile."""
+        mock_client = MagicMock()
+        mock_anthropic.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.stop_reason = "end_turn"
+        mock_text = MagicMock()
+        mock_text.type = "text"
+        mock_text.text = "Hello."
+        mock_response.content = [mock_text]
+        mock_client.messages.create.return_value = mock_response
+
+        orchestrator = Orchestrator(api_key="test-key")
+        orchestrator._get_direct_response("hi", context)
+
+        assert mock_client.messages.create.call_args.kwargs["model"] == INTENT_MODEL
+
+    @patch("src.bot.agents.base.Anthropic")
+    def test_synthesis_uses_heavy_model(self, mock_anthropic, context):
+        """Multi-specialist synthesis should use the heavy profile."""
+        mock_client = MagicMock()
+        mock_anthropic.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.stop_reason = "end_turn"
+        mock_text = MagicMock()
+        mock_text.type = "text"
+        mock_text.text = "Combined response."
+        mock_response.content = [mock_text]
+        mock_client.messages.create.return_value = mock_response
+
+        orchestrator = Orchestrator(api_key="test-key")
+        orchestrator._synthesize_results(
+            "combine these",
+            [
+                AgentResult(response="Calendar result", agent_type=AgentType.CALENDAR),
+                AgentResult(response="Email result", agent_type=AgentType.EMAIL),
+            ],
+            context,
+        )
+
+        assert mock_client.messages.create.call_args.kwargs["model"] == HEAVY_AGENT_MODEL
 
 
 class TestTaskPlan:

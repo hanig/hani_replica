@@ -1,0 +1,7 @@
+{"id":"chat.greeting","response":"I am up and ready to help.","agent":null,"background":false,"confirmation_required":false,"model_profile":"router"}
+{"id":"briefing.today","response":"I will gather your calendar and email briefing in the background.","agent":"research","background":true,"confirmation_required":false,"model_profile":"agent"}
+{"id":"calendar.next","response":"Your next calendar event is a meeting later today.","agent":"calendar","background":false,"confirmation_required":false,"model_profile":"agent"}
+{"id":"email.draft","response":"I prepared a draft and need you to confirm before delivery.","agent":"email","background":false,"confirmation_required":true,"model_profile":"agent"}
+{"id":"github.issue","response":"Please confirm before I create the GitHub issue.","agent":"github","background":false,"confirmation_required":true,"model_profile":"agent"}
+{"id":"todoist.create","response":"Please confirm before I create that Todoist task.","agent":"research","background":false,"confirmation_required":true,"model_profile":"agent"}
+{"id":"research.summary","response":"Tahoe appears in the indexed project notes and related documents.","agent":"research","background":false,"confirmation_required":false,"model_profile":"agent"}

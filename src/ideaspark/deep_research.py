@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 import anthropic
 import requests
 
-from src.config import ANTHROPIC_API_KEY, AGENT_MODEL
+from src.config import ANTHROPIC_API_KEY, DEEP_RESEARCH_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +227,7 @@ class DeepResearcher:
         )
         try:
             response = self.client.messages.create(
-                model=AGENT_MODEL,
+                model=DEEP_RESEARCH_MODEL,
                 max_tokens=800,
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -263,7 +263,7 @@ class DeepResearcher:
 
         try:
             response = self.client.messages.create(
-                model=AGENT_MODEL,
+                model=DEEP_RESEARCH_MODEL,
                 max_tokens=1500,
                 messages=[{"role": "user", "content": prompt}],
             )

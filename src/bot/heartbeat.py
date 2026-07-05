@@ -10,13 +10,14 @@ from anthropic import Anthropic
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
-from ..config import ANTHROPIC_API_KEY, AGENT_MODEL, SLACK_AUTHORIZED_USERS, get_user_timezone
-from .formatters import format_briefing, format_calendar_events, markdown_to_slack
+from ..config import ANTHROPIC_API_KEY, BRIEFING_MODEL, SLACK_AUTHORIZED_USERS, get_user_timezone
+from .formatters import format_briefing, markdown_to_slack
 from .proactive_settings import ProactiveSettingsStore, UserProactiveSettings
+from .tracing import get_trace_logger, model_usage
 
 if TYPE_CHECKING:
-    from ..integrations.google_multi import MultiGoogleManager
     from ..integrations.github_client import GitHubClient
+    from ..integrations.google_multi import MultiGoogleManager
 
 logger = logging.getLogger(__name__)
 
@@ -546,13 +547,36 @@ Briefing data:
 
         try:
             client = Anthropic(api_key=ANTHROPIC_API_KEY)
+            call_started = time.perf_counter()
             response = client.messages.create(
-                model=AGENT_MODEL,
+                model=BRIEFING_MODEL,
                 max_tokens=2048,
                 messages=[{"role": "user", "content": prompt}],
             )
-            return markdown_to_slack(response.content[0].text)
+            get_trace_logger().log_model_call(
+                caller="heartbeat.daily_briefing",
+                model=BRIEFING_MODEL,
+                operation="messages.create",
+                duration_ms=(time.perf_counter() - call_started) * 1000,
+                success=True,
+                usage=model_usage(response),
+                stop_reason=getattr(response, "stop_reason", None),
+            )
+            call_started = None
+            text = _extract_response_text(response)
+            if not text:
+                raise ValueError("No text content returned for briefing")
+            return markdown_to_slack(text)
         except Exception as e:
+            if "call_started" in locals() and call_started is not None:
+                get_trace_logger().log_model_call(
+                    caller="heartbeat.daily_briefing",
+                    model=BRIEFING_MODEL,
+                    operation="messages.create",
+                    duration_ms=(time.perf_counter() - call_started) * 1000,
+                    success=False,
+                    error=e,
+                )
             logger.warning(f"LLM briefing generation failed, falling back to static: {e}")
             formatted = format_briefing(briefing)
             return formatted.get("text", "Daily Briefing")
@@ -670,3 +694,11 @@ Briefing data:
         deleted = self.settings_store.cleanup_old_notifications(max_age_days=7)
         if deleted > 0:
             logger.info(f"Cleaned up {deleted} old notification records")
+
+
+def _extract_response_text(response) -> str:
+    """Extract the first text block from an Anthropic response."""
+    for content in getattr(response, "content", []):
+        if getattr(content, "type", None) == "text":
+            return getattr(content, "text", "")
+    return ""

@@ -6,6 +6,7 @@ Supports both synchronous and streaming execution modes.
 """
 
 import logging
+import time
 from collections.abc import Generator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -28,6 +29,7 @@ from .tools import (
     get_tool_schemas,
     parse_date_reference,
 )
+from .tracing import get_trace_logger, model_usage
 
 if TYPE_CHECKING:
     from .actions.confirmable import PendingAction
@@ -1505,6 +1507,62 @@ class AgentExecutor:
         self._client = Anthropic(api_key=self.api_key)
         self._tool_executor = ToolExecutor()
         self._tool_schemas = get_tool_schemas()
+        self.trace_logger = get_trace_logger()
+
+    def _create_message(self, **kwargs):
+        """Call Anthropic messages.create with structured tracing."""
+        started = time.perf_counter()
+        try:
+            response = self._client.messages.create(**kwargs)
+            self.trace_logger.log_model_call(
+                caller="agent.executor",
+                model=kwargs.get("model", self.model),
+                operation="messages.create",
+                duration_ms=(time.perf_counter() - started) * 1000,
+                success=True,
+                usage=model_usage(response),
+                stop_reason=getattr(response, "stop_reason", None),
+            )
+            return response
+        except Exception as e:
+            self.trace_logger.log_model_call(
+                caller="agent.executor",
+                model=kwargs.get("model", self.model),
+                operation="messages.create",
+                duration_ms=(time.perf_counter() - started) * 1000,
+                success=False,
+                error=e,
+            )
+            raise
+
+    def _execute_tool_traced(self, tool_name: str, tool_input: dict[str, Any], context):
+        """Execute a tool with structured tracing."""
+        started = time.perf_counter()
+        try:
+            result = self._tool_executor.execute(
+                tool_name,
+                tool_input,
+                context=context,
+            )
+            self.trace_logger.log_tool_call(
+                caller="agent.executor",
+                tool_name=tool_name,
+                duration_ms=(time.perf_counter() - started) * 1000,
+                success=result.success,
+                input_keys=list(tool_input.keys()) if isinstance(tool_input, dict) else [],
+                result_preview=result.to_content()[:300],
+            )
+            return result
+        except Exception as e:
+            self.trace_logger.log_tool_call(
+                caller="agent.executor",
+                tool_name=tool_name,
+                duration_ms=(time.perf_counter() - started) * 1000,
+                success=False,
+                input_keys=list(tool_input.keys()) if isinstance(tool_input, dict) else [],
+                error=e,
+            )
+            raise
 
     def run(
         self,
@@ -1574,7 +1632,7 @@ class AgentExecutor:
 
             try:
                 # Call Claude with tools
-                response = self._client.messages.create(
+                response = self._create_message(
                     model=self.model,
                     max_tokens=4096,
                     system=system,
@@ -1618,7 +1676,7 @@ class AgentExecutor:
                                 )
 
                             # Execute the tool
-                            result = self._tool_executor.execute(
+                            result = self._execute_tool_traced(
                                 tool_name,
                                 tool_input,
                                 context=context,
@@ -1759,6 +1817,7 @@ class AgentExecutor:
 
             try:
                 # Use streaming API
+                model_call_started = time.perf_counter()
                 with self._client.messages.stream(
                     model=self.model,
                     max_tokens=4096,
@@ -1816,6 +1875,16 @@ class AgentExecutor:
 
                     # Get the final message
                     response = stream.get_final_message()
+                self.trace_logger.log_model_call(
+                    caller="agent.executor",
+                    model=self.model,
+                    operation="messages.stream",
+                    duration_ms=(time.perf_counter() - model_call_started) * 1000,
+                    success=True,
+                    usage=model_usage(response),
+                    stop_reason=getattr(response, "stop_reason", None),
+                )
+                model_call_started = None
 
                 # Process the complete response
                 if response.stop_reason == "end_turn":
@@ -1871,7 +1940,7 @@ class AgentExecutor:
                             )
 
                             # Execute the tool
-                            result = self._tool_executor.execute(
+                            result = self._execute_tool_traced(
                                 tool_name,
                                 tool_input,
                                 context=context,
@@ -1942,6 +2011,15 @@ class AgentExecutor:
                     )
 
             except Exception as e:
+                if "model_call_started" in locals() and model_call_started is not None:
+                    self.trace_logger.log_model_call(
+                        caller="agent.executor",
+                        model=self.model,
+                        operation="messages.stream",
+                        duration_ms=(time.perf_counter() - model_call_started) * 1000,
+                        success=False,
+                        error=e,
+                    )
                 logger.error(f"Error in streaming agent loop: {e}", exc_info=True)
                 yield StreamEvent(
                     event_type=StreamEventType.ERROR,

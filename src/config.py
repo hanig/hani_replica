@@ -2,6 +2,7 @@
 
 import json
 import os
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -133,8 +134,104 @@ EMBEDDING_DIMENSIONS = 3072  # text-embedding-3-large default
 
 # Anthropic Configuration
 ANTHROPIC_API_KEY = get_env("ANTHROPIC_API_KEY")
-INTENT_MODEL = "claude-3-haiku-20240307"
-AGENT_MODEL = get_env("AGENT_MODEL", "claude-sonnet-5")
+
+
+def _get_env_int(key: str, default: int) -> int:
+    """Get an integer environment variable with a safe default."""
+    value = get_env(key)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+@dataclass(frozen=True)
+class ModelProfile:
+    """Configured model profile for a specific runtime role."""
+
+    name: str
+    provider: str
+    model: str
+    max_tokens: int
+    description: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a serializable, non-secret representation."""
+        return asdict(self)
+
+
+_DEFAULT_ROUTER_MODEL = get_env("INTENT_MODEL", "claude-haiku-4-5")
+_DEFAULT_AGENT_MODEL = get_env("AGENT_MODEL", "claude-sonnet-5")
+_DEFAULT_HEAVY_MODEL = get_env("HEAVY_AGENT_MODEL", "claude-opus-4-8")
+
+MODEL_REGISTRY: dict[str, ModelProfile] = {
+    "router": ModelProfile(
+        name="router",
+        provider="anthropic",
+        model=get_env("ROUTER_MODEL", _DEFAULT_ROUTER_MODEL),
+        max_tokens=_get_env_int("ROUTER_MODEL_MAX_TOKENS", 1024),
+        description="Fast classification, routing, and short conversational responses.",
+    ),
+    "agent": ModelProfile(
+        name="agent",
+        provider="anthropic",
+        model=_DEFAULT_AGENT_MODEL,
+        max_tokens=_get_env_int("AGENT_MODEL_MAX_TOKENS", 4096),
+        description="Default tool-using agent and specialist model.",
+    ),
+    "briefing": ModelProfile(
+        name="briefing",
+        provider="anthropic",
+        model=get_env("BRIEFING_MODEL", _DEFAULT_AGENT_MODEL),
+        max_tokens=_get_env_int("BRIEFING_MODEL_MAX_TOKENS", 2048),
+        description="Daily briefings and digest generation.",
+    ),
+    "deep_research": ModelProfile(
+        name="deep_research",
+        provider="anthropic",
+        model=get_env("DEEP_RESEARCH_MODEL", _DEFAULT_HEAVY_MODEL),
+        max_tokens=_get_env_int("DEEP_RESEARCH_MODEL_MAX_TOKENS", 4096),
+        description="Higher-depth synthesis and long-horizon research tasks.",
+    ),
+    "ideaspark": ModelProfile(
+        name="ideaspark",
+        provider="anthropic",
+        model=get_env("IDEASPARK_MODEL", _DEFAULT_AGENT_MODEL),
+        max_tokens=_get_env_int("IDEASPARK_MODEL_MAX_TOKENS", 2000),
+        description="IdeaSpark generation and scoring.",
+    ),
+    "heavy": ModelProfile(
+        name="heavy",
+        provider="anthropic",
+        model=_DEFAULT_HEAVY_MODEL,
+        max_tokens=_get_env_int("HEAVY_AGENT_MODEL_MAX_TOKENS", 4096),
+        description="Explicit escalation profile for the hardest requests.",
+    ),
+}
+
+
+def get_model_profile(name: str) -> ModelProfile:
+    """Return a configured model profile by name."""
+    try:
+        return MODEL_REGISTRY[name]
+    except KeyError as e:
+        available = ", ".join(sorted(MODEL_REGISTRY))
+        raise ValueError(f"Unknown model profile '{name}'. Available: {available}") from e
+
+
+def get_model_id(name: str) -> str:
+    """Return the model id for a configured profile."""
+    return get_model_profile(name).model
+
+
+INTENT_MODEL = get_model_id("router")
+AGENT_MODEL = get_model_id("agent")
+BRIEFING_MODEL = get_model_id("briefing")
+DEEP_RESEARCH_MODEL = get_model_id("deep_research")
+IDEASPARK_MODEL = get_model_id("ideaspark")
+HEAVY_AGENT_MODEL = get_model_id("heavy")
 
 # Bot mode:
 # - "intent" for legacy intent routing with handlers
@@ -185,6 +282,13 @@ AUDIT_RETENTION_DAYS = int(get_env("AUDIT_RETENTION_DAYS", "90"))
 # Whether to store raw message text in audit logs
 AUDIT_LOG_MESSAGES = get_env("AUDIT_LOG_MESSAGES", "false").lower() in ("true", "1", "yes")
 
+# Background job state
+JOB_DB_PATH = PROJECT_ROOT / get_env("JOB_DB_PATH", "data/jobs.db")
+
+# Structured runtime traces (metadata only; no raw Slack text by default)
+ENABLE_TRACE_LOG = get_env("ENABLE_TRACE_LOG", "true").lower() in ("true", "1", "yes")
+TRACE_LOG_PATH = PROJECT_ROOT / get_env("TRACE_LOG_PATH", "logs/traces.jsonl")
+
 # Ensure required directories exist
 DATA_DIR = PROJECT_ROOT / "data"
 LOGS_DIR = PROJECT_ROOT / "logs"
@@ -220,6 +324,10 @@ def get_config() -> dict[str, Any]:
         "embedding_model": EMBEDDING_MODEL,
         "intent_model": INTENT_MODEL,
         "agent_model": AGENT_MODEL,
+        "model_registry": {
+            name: profile.to_dict()
+            for name, profile in MODEL_REGISTRY.items()
+        },
         "bot_mode": BOT_MODE,
         "enable_streaming": ENABLE_STREAMING,
         "enable_direct_email_send": ENABLE_DIRECT_EMAIL_SEND,
@@ -236,6 +344,9 @@ def get_config() -> dict[str, Any]:
         "enable_audit_log": ENABLE_AUDIT_LOG,
         "audit_log_messages": AUDIT_LOG_MESSAGES,
         "audit_retention_days": AUDIT_RETENTION_DAYS,
+        "job_db_path": str(JOB_DB_PATH),
+        "enable_trace_log": ENABLE_TRACE_LOG,
+        "trace_log_path": str(TRACE_LOG_PATH),
     }
 
 

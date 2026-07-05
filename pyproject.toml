@@ -60,6 +60,9 @@ engram-delta = "scripts.daily_delta_sync:main"
 engram-bot = "scripts.run_bot:main"
 engram-query = "scripts.query_knowledge:main"
 engram-briefing = "scripts.daily_briefing:main"
+engram-model-smoke = "scripts.model_smoke_test:main"
+engram-evals = "scripts.run_evals:main"
+engram-trace-summary = "scripts.trace_summary:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -198,8 +198,14 @@ ZOTERO_DEFAULT_COLLECTION=MyCollection  # Default collection for new papers
 # Bot Mode: "intent" (legacy), "agent" (single agent), "multi_agent" (specialists)
 BOT_MODE=agent
 
-# Agent model for tool calling (default: claude-sonnet-5)
+# Model profiles
+# Keep these explicit so model upgrades can be smoke-tested before restart.
+INTENT_MODEL=claude-haiku-4-5
 AGENT_MODEL=claude-sonnet-5
+BRIEFING_MODEL=claude-sonnet-5
+DEEP_RESEARCH_MODEL=claude-opus-4-8
+IDEASPARK_MODEL=claude-sonnet-5
+HEAVY_AGENT_MODEL=claude-opus-4-8
 
 # Enable streaming responses (applies to agent and multi_agent modes)
 ENABLE_STREAMING=true
@@ -224,6 +230,9 @@ ENABLE_AUDIT_LOG=true
 AUDIT_LOG_PATH=data/audit.db
 AUDIT_RETENTION_DAYS=90
 AUDIT_LOG_MESSAGES=false  # Store raw message text in audit logs
+JOB_DB_PATH=data/jobs.db
+ENABLE_TRACE_LOG=true
+TRACE_LOG_PATH=logs/traces.jsonl
 ```
 
 ### Notion Setup
@@ -306,6 +315,24 @@ The bot runs in Socket Mode (no public URL needed). Keep it running to respond t
 nohup python scripts/run_bot.py > logs/bot.log 2>&1 &
 ```
 
+### Model and Eval Checks
+
+```bash
+# Smoke-test configured Anthropic model profiles
+python scripts/model_smoke_test.py --all
+
+# Validate public synthetic Slack workflow evals
+python scripts/run_evals.py --cases evals/slack_workflows.example.jsonl --list
+
+# Score saved eval predictions against text, routing, confirmation, and model expectations
+python scripts/run_evals.py \
+  --cases evals/slack_workflows.example.jsonl \
+  --responses evals/responses.example.jsonl
+
+# Summarize metadata-only runtime traces
+python scripts/trace_summary.py
+```
+
 ## Bot Modes
 
 The bot supports three operating modes, configured via `BOT_MODE`:
@@ -325,13 +352,12 @@ Single agent with LLM-driven tool calling.
 
 ### Multi-Agent Mode (`multi_agent`)
 Orchestrator routes to specialist agents.
-- **Calendar Agent**: View events, answer next/upcoming questions using current local time, check availability, create events with attendee invites
 - **Calendar Agent**: View events, answer next/upcoming questions using current local time, check availability, create/update/cancel events with attendee notifications
 - **Email Agent**: Search, drafts, and optional send (feature-flagged)
 - **GitHub Agent**: PRs, issues, repository activity
 - **Research Agent**: Semantic search, briefings
 
-Each specialist has domain expertise and relevant tools.
+Each specialist has domain expertise and relevant tools. Direct conversational turns use the router model profile, normal specialist tool work uses the agent profile, and multi-specialist synthesis uses the heavy profile.
 
 ## Slack Bot Commands
 
@@ -361,6 +387,10 @@ Talk to the bot via DM or @mention in channels:
 | `What did I miss yesterday?` | Daily briefing for a specific date |
 | `Help` | Show available commands |
 | `Set my briefing to 8am weekdays` | Update proactive notification settings |
+| `jobs` | Show recent background jobs |
+| `job status <id>` | Check a background job |
+| `job cancel <id>` | Cancel a queued/running background job |
+| `job retry <id>` | Retry a finished or failed background job |
 
 ### Example Interactions
 
