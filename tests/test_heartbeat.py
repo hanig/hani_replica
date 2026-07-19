@@ -1,7 +1,7 @@
 """Tests for heartbeat manager."""
 
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -93,7 +93,7 @@ class TestHeartbeatManager:
         event = {
             "id": "event123",
             "summary": "Team Meeting",
-            "start": datetime.now(timezone.utc) + timedelta(minutes=15),
+            "start": datetime.now(UTC) + timedelta(minutes=15),
             "location": "Conference Room A",
         }
 
@@ -113,7 +113,7 @@ class TestHeartbeatManager:
         event = {
             "id": "event123",
             "summary": "Video Call",
-            "start": datetime.now(timezone.utc) + timedelta(minutes=15),
+            "start": datetime.now(UTC) + timedelta(minutes=15),
             "hangout_link": "https://meet.google.com/abc-def-ghi",
         }
 
@@ -160,10 +160,24 @@ class TestHeartbeatManager:
         heartbeat._github_client.get_my_prs.return_value = []
         heartbeat._github_client.get_my_issues.return_value = []
 
-        result = heartbeat._send_daily_briefing(settings)
+        heartbeat._todoist_client = MagicMock()
+        heartbeat._todoist_client.list_tasks.return_value = [
+            {"content": "Review overdue task"},
+        ]
+
+        with patch("src.bot.heartbeat.Anthropic") as anthropic:
+            anthropic.return_value.messages.create.side_effect = Exception(
+                "workspace API usage limits"
+            )
+            result = heartbeat._send_daily_briefing(settings)
 
         assert result is True
         mock_slack_client.chat_postMessage.assert_called_once()
+        posted_text = mock_slack_client.chat_postMessage.call_args.kwargs["text"]
+        assert posted_text != "Daily Briefing"
+        assert "Morning Meeting" in posted_text
+        assert "arc: 5" in posted_text
+        assert "Review overdue task" in posted_text
 
     def test_check_calendar_reminders_no_users(self, heartbeat):
         """Test calendar reminder check with no users."""

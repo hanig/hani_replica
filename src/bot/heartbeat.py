@@ -3,7 +3,7 @@
 import json
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from anthropic import Anthropic
@@ -11,7 +11,7 @@ from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
 from ..config import ANTHROPIC_API_KEY, BRIEFING_MODEL, SLACK_AUTHORIZED_USERS, get_user_timezone
-from .formatters import format_briefing, markdown_to_slack
+from .formatters import format_briefing_text, markdown_to_slack
 from .proactive_settings import ProactiveSettingsStore, UserProactiveSettings
 from .tracing import get_trace_logger, model_usage
 
@@ -46,8 +46,8 @@ class HeartbeatManager:
         self.settings_store = settings_store or ProactiveSettingsStore()
 
         # Lazy-loaded integrations
-        self._multi_google: "MultiGoogleManager | None" = None
-        self._github_client: "GitHubClient | None" = None
+        self._multi_google: MultiGoogleManager | None = None
+        self._github_client: GitHubClient | None = None
         self._todoist_client = None
 
         # Track recently sent notifications to avoid duplicates
@@ -125,7 +125,7 @@ class HeartbeatManager:
             return 0
 
         reminders_sent = 0
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         reminder_window_start = now
         reminder_window_end = now + timedelta(minutes=settings.reminder_minutes_before + 5)
 
@@ -205,7 +205,7 @@ class HeartbeatManager:
 
             # Calculate time until event
             if isinstance(start, datetime):
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 minutes_until = int((start - now).total_seconds() / 60)
                 time_until_str = f"{minutes_until} minutes"
             else:
@@ -312,9 +312,7 @@ class HeartbeatManager:
 
         try:
             # Get recent emails (last hour)
-            from datetime import datetime, timedelta
-
-            since = datetime.now(timezone.utc) - timedelta(hours=1)
+            since = datetime.now(UTC) - timedelta(hours=1)
             emails = self.multi_google.search_emails_all_accounts(
                 query="is:unread",
                 max_results=20,
@@ -578,8 +576,7 @@ Briefing data:
                     error=e,
                 )
             logger.warning(f"LLM briefing generation failed, falling back to static: {e}")
-            formatted = format_briefing(briefing)
-            return formatted.get("text", "Daily Briefing")
+            return format_briefing_text(briefing)
 
     def _generate_briefing(self) -> dict[str, Any]:
         """Generate briefing data.

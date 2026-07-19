@@ -364,7 +364,7 @@ def format_github_issues(issues: list[dict], query: str | None = None) -> dict[s
         labels = issue.get("labels", [])
 
         status_emoji = ":large_green_circle:" if state == "open" else ":white_check_mark:"
-        label_str = " ".join(f"`{l}`" for l in labels[:3]) if labels else ""
+        label_str = " ".join(f"`{label}`" for label in labels[:3]) if labels else ""
 
         blocks.append({
             "type": "section",
@@ -449,6 +449,82 @@ def format_briefing(briefing: dict) -> dict[str, Any]:
         "text": "Daily Briefing",
         "blocks": blocks,
     }
+
+
+def format_briefing_text(briefing: dict) -> str:
+    """Format daily briefing as Slack mrkdwn text."""
+    lines = [f"*Daily Briefing - {briefing.get('date', 'Today')}*"]
+
+    events = briefing.get("events", []) or []
+    lines.extend(["", f"*Calendar:* {len(events)} events today"])
+    if events:
+        for event in events[:10]:
+            summary = event.get("summary") or event.get("title") or "Event"
+            start = _format_briefing_time(event.get("start"))
+            location = event.get("location")
+            detail = f"{start} {summary}".strip()
+            if location:
+                detail += f" ({location})"
+            lines.append(f"- {detail}")
+        if len(events) > 10:
+            lines.append(f"- ...and {len(events) - 10} more")
+    else:
+        lines.append("- No events scheduled")
+
+    unread = briefing.get("unread_counts", {}) or {}
+    total_unread = sum(count for count in unread.values() if isinstance(count, int))
+    lines.extend(["", f"*Unread Email:* {total_unread} total"])
+    if unread:
+        for account, count in unread.items():
+            lines.append(f"- {account}: {count}")
+    else:
+        lines.append("- No unread counts available")
+
+    prs = briefing.get("open_prs", []) or []
+    issues = briefing.get("open_issues", []) or []
+    lines.extend(["", f"*GitHub:* {len(prs)} open PRs, {len(issues)} assigned issues"])
+    for pr in prs[:5]:
+        title = pr.get("title") or pr.get("number") or "PR"
+        repo = pr.get("repository") or pr.get("repo") or pr.get("full_name")
+        lines.append(f"- PR: {title}{f' ({repo})' if repo else ''}")
+    for issue in issues[:5]:
+        title = issue.get("title") or issue.get("number") or "Issue"
+        repo = issue.get("repository") or issue.get("repo") or issue.get("full_name")
+        lines.append(f"- Issue: {title}{f' ({repo})' if repo else ''}")
+
+    overdue_tasks = briefing.get("overdue_tasks", []) or []
+    lines.extend(["", f"*Todoist Overdue:* {len(overdue_tasks)} tasks"])
+    if overdue_tasks:
+        for task in overdue_tasks[:10]:
+            content = task.get("content") or task.get("title") or "Task"
+            project = task.get("project_name") or task.get("project")
+            lines.append(f"- {content}{f' ({project})' if project else ''}")
+        if len(overdue_tasks) > 10:
+            lines.append(f"- ...and {len(overdue_tasks) - 10} more")
+    else:
+        lines.append("- No overdue tasks")
+
+    return "\n".join(lines)
+
+
+def _format_briefing_time(value: Any) -> str:
+    """Return a compact display time for briefing items."""
+    if isinstance(value, dict):
+        value = value.get("dateTime") or value.get("date") or ""
+
+    if isinstance(value, datetime):
+        return value.strftime("%I:%M %p").lstrip("0")
+
+    if isinstance(value, str):
+        if "T" not in value:
+            return value
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return parsed.strftime("%I:%M %p").lstrip("0")
+        except ValueError:
+            return value
+
+    return ""
 
 
 def format_confirmation(
