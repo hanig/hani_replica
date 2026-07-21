@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,21 @@ def get_env_dict(key: str, default: dict[str, str] | None = None) -> dict[str, s
                 k, v = pair.split("=", 1)
                 result[k.strip()] = v.strip()
         return result
+
+
+def _resolve_path_setting(value: str | None, default: Path) -> Path:
+    """Resolve an env path, treating relative values as project-relative."""
+    if not value:
+        return default
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else PROJECT_ROOT / path
+
+
+def _default_embedding_cache_dir() -> Path:
+    """Return a user-local cache dir outside synced project folders."""
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "engram" / "embeddings_cache"
+    return Path(os.getenv("XDG_CACHE_HOME", Path.home() / ".cache")) / "engram" / "embeddings_cache"
 
 
 # Google Account Configuration
@@ -131,6 +147,10 @@ SLACK_ALLOW_ALL_USERS = get_env("SLACK_ALLOW_ALL_USERS", "false").lower() in ("t
 OPENAI_API_KEY = get_env("OPENAI_API_KEY")
 EMBEDDING_MODEL = "text-embedding-3-large"
 EMBEDDING_DIMENSIONS = 3072  # text-embedding-3-large default
+EMBEDDING_CACHE_DIR = _resolve_path_setting(
+    get_env("EMBEDDING_CACHE_DIR"),
+    _default_embedding_cache_dir(),
+)
 
 # Anthropic Configuration
 ANTHROPIC_API_KEY = get_env("ANTHROPIC_API_KEY")

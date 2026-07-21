@@ -181,6 +181,7 @@ USER_TIMEZONE=America/Los_Angeles
 # Sync settings
 SYNC_BATCH_SIZE=100
 EMBEDDING_BATCH_SIZE=50
+EMBEDDING_CACHE_DIR=~/Library/Caches/engram/embeddings_cache
 GMAIL_STALE_HISTORY_FULL_SYNC_LIMIT=1000
 
 # OpenAI API Key (for embeddings)
@@ -562,7 +563,7 @@ cp docs/com.engram.bot-healthcheck.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.engram.bot-healthcheck.plist
 ```
 
-The watchdog runs `scripts/bot_healthcheck.py`, verifies `com.engram.bot` is loaded with a running `scripts/run_bot.py` process, and bootstraps/kickstarts the service if needed. Logs are written to `logs/bot_healthcheck.log`.
+The watchdog runs `scripts/bot_healthcheck.py`, verifies `com.engram.bot` is loaded with a running `scripts/run_bot.py` process, checks recent Slack Socket Mode failures in `logs/bot_error.log` and `logs/engram.log`, and bootstraps/kickstarts the service if needed. Logs are written to `logs/bot_healthcheck.log`.
 
 ## Security
 

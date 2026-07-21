@@ -6,8 +6,10 @@ from unittest.mock import patch
 from scripts.bot_healthcheck import (
     ServiceStatus,
     _parse_launchctl_print,
+    count_recent_log_marker_occurrences,
     count_recent_log_occurrences,
     has_recent_broken_pipe_loop,
+    has_recent_socket_failure_loop,
     is_service_healthy,
     repair_service,
 )
@@ -117,6 +119,64 @@ def test_has_recent_broken_pipe_loop_respects_threshold(tmp_path):
         log_path,
         lookback_seconds=120,
         threshold=3,
+        now=datetime(2026, 5, 23, 12, 5, 0),
+    )
+
+
+def test_count_recent_log_marker_occurrences_counts_any_marker_once(tmp_path):
+    """A line matching any Socket Mode marker counts once."""
+    log_path = tmp_path / "engram.log"
+    log_path.write_text(
+        "\n".join(
+            [
+                "2026-05-23 12:01:00,000 - slack_bolt.App - ERROR - BrokenPipeError",
+                "2026-05-23 12:04:00,000 - slack_sdk.socket_mode - ERROR - Failed to establish a connection",
+                "2026-05-23 12:04:10,000 - slack_sdk.socket_mode - ERROR - Failed to retrieve WSS URL",
+                "2026-05-23 12:04:20,000 - slack_bolt.App - ERROR - BrokenPipeError",
+                "2026-05-23 12:04:30,000 - slack_bolt.App - ERROR - BrokenPipeError Failed to establish a connection",
+            ]
+        )
+    )
+
+    assert (
+        count_recent_log_marker_occurrences(
+            log_path,
+            (
+                "BrokenPipeError",
+                "Failed to establish a connection",
+                "Failed to retrieve WSS URL",
+            ),
+            lookback_seconds=120,
+            now=datetime(2026, 5, 23, 12, 5, 0),
+        )
+        == 4
+    )
+
+
+def test_has_recent_socket_failure_loop_counts_multiple_logs(tmp_path):
+    """Socket failures in stderr and app logs both contribute to repair decisions."""
+    error_log = tmp_path / "bot_error.log"
+    app_log = tmp_path / "engram.log"
+    error_log.write_text("2026-05-23 12:04:00,000 - slack_bolt.App - ERROR - BrokenPipeError")
+    app_log.write_text(
+        "\n".join(
+            [
+                "2026-05-23 12:04:10,000 - slack_sdk.socket_mode - ERROR - Failed to establish a connection",
+                "2026-05-23 12:04:20,000 - slack_sdk.socket_mode - ERROR - Failed to check the state of sock",
+            ]
+        )
+    )
+
+    assert has_recent_socket_failure_loop(
+        [error_log, app_log],
+        lookback_seconds=120,
+        threshold=3,
+        now=datetime(2026, 5, 23, 12, 5, 0),
+    )
+    assert not has_recent_socket_failure_loop(
+        [error_log, app_log],
+        lookback_seconds=120,
+        threshold=4,
         now=datetime(2026, 5, 23, 12, 5, 0),
     )
 

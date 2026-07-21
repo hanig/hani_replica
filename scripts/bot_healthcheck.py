@@ -14,9 +14,17 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_LABEL = "com.engram.bot"
 DEFAULT_SERVICE_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{DEFAULT_LABEL}.plist"
 DEFAULT_LOG_FILE = PROJECT_ROOT / "logs" / "bot_healthcheck.log"
+DEFAULT_BOT_APP_LOG = PROJECT_ROOT / "logs" / "engram.log"
 DEFAULT_BOT_ERROR_LOG = PROJECT_ROOT / "logs" / "bot_error.log"
 DEFAULT_EXPECTED_COMMAND = "scripts/run_bot.py"
 BROKEN_PIPE_MARKER = "BrokenPipeError"
+DEFAULT_LOG_SCAN_BYTES = 2_000_000
+SOCKET_FAILURE_MARKERS = (
+    BROKEN_PIPE_MARKER,
+    "Failed to establish a connection",
+    "Failed to retrieve WSS URL",
+    "Failed to check the state of sock",
+)
 
 
 @dataclass
@@ -113,6 +121,20 @@ def _parse_log_timestamp(line: str) -> datetime | None:
         return None
 
 
+def _read_log_tail(log_path: Path, max_bytes: int = DEFAULT_LOG_SCAN_BYTES) -> list[str]:
+    """Read a bounded tail of a log file as lines."""
+    try:
+        size = log_path.stat().st_size
+        with log_path.open("rb") as f:
+            if size > max_bytes:
+                f.seek(-max_bytes, os.SEEK_END)
+                f.readline()
+            return f.read().decode(errors="replace").splitlines()
+    except OSError as e:
+        logging.warning("Could not read log file %s: %s", log_path, e)
+        return []
+
+
 def count_recent_log_occurrences(
     log_path: Path,
     marker: str,
@@ -127,11 +149,7 @@ def count_recent_log_occurrences(
     cutoff = now - timedelta(seconds=lookback_seconds)
     count = 0
 
-    try:
-        lines = log_path.read_text(errors="replace").splitlines()
-    except OSError as e:
-        logging.warning("Could not read log file %s: %s", log_path, e)
-        return 0
+    lines = _read_log_tail(log_path)
 
     for line in reversed(lines):
         timestamp = _parse_log_timestamp(line)
@@ -140,6 +158,37 @@ def count_recent_log_occurrences(
         if timestamp < cutoff:
             break
         if marker in line:
+            count += 1
+
+    return count
+
+
+def count_recent_log_marker_occurrences(
+    log_path: Path,
+    markers: tuple[str, ...],
+    lookback_seconds: int,
+    now: datetime | None = None,
+) -> int:
+    """Count recent timestamped log lines containing any marker."""
+    if not markers:
+        return 0
+
+    if not log_path.exists():
+        return 0
+
+    now = now or datetime.now()
+    cutoff = now - timedelta(seconds=lookback_seconds)
+    count = 0
+
+    lines = _read_log_tail(log_path)
+
+    for line in reversed(lines):
+        timestamp = _parse_log_timestamp(line)
+        if timestamp is None:
+            continue
+        if timestamp < cutoff:
+            break
+        if any(marker in line for marker in markers):
             count += 1
 
     return count
@@ -163,6 +212,28 @@ def has_recent_broken_pipe_loop(
         )
         >= threshold
     )
+
+
+def has_recent_socket_failure_loop(
+    log_paths: list[Path],
+    lookback_seconds: int,
+    threshold: int,
+    now: datetime | None = None,
+) -> bool:
+    """Return true if recent logs show a repeated Slack Socket Mode failure loop."""
+    if threshold <= 0:
+        return False
+
+    total = sum(
+        count_recent_log_marker_occurrences(
+            log_path,
+            SOCKET_FAILURE_MARKERS,
+            lookback_seconds,
+            now=now,
+        )
+        for log_path in log_paths
+    )
+    return total >= threshold
 
 
 def repair_service(
@@ -231,6 +302,12 @@ def main() -> int:
     )
     parser.add_argument("--log-file", type=Path, default=DEFAULT_LOG_FILE)
     parser.add_argument(
+        "--app-log",
+        type=Path,
+        default=DEFAULT_BOT_APP_LOG,
+        help="Bot application log to inspect for repeated Socket Mode failures",
+    )
+    parser.add_argument(
         "--error-log",
         type=Path,
         default=DEFAULT_BOT_ERROR_LOG,
@@ -255,21 +332,22 @@ def main() -> int:
 
     status = get_service_status(args.label)
     service_healthy = is_service_healthy(status, expected_command=args.expected_command)
-    broken_pipe_loop = has_recent_broken_pipe_loop(
-        args.error_log,
+    socket_failure_loop = has_recent_socket_failure_loop(
+        [args.error_log, args.app_log],
         args.broken_pipe_lookback_seconds,
         args.broken_pipe_threshold,
     )
 
-    if service_healthy and not broken_pipe_loop:
+    if service_healthy and not socket_failure_loop:
         logging.info("Service %s is healthy: state=%s pid=%s", args.label, status.state, status.pid)
         return 0
 
-    if broken_pipe_loop:
+    if socket_failure_loop:
         logging.warning(
-            "Service %s has a recent Socket Mode BrokenPipeError loop in %s",
+            "Service %s has a recent Socket Mode failure loop in %s and %s",
             args.label,
             args.error_log,
+            args.app_log,
         )
 
     logging.warning(

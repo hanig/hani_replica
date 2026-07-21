@@ -9,8 +9,8 @@ from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from ..config import (
-    DATA_DIR,
     EMBEDDING_BATCH_SIZE,
+    EMBEDDING_CACHE_DIR,
     EMBEDDING_DIMENSIONS,
     EMBEDDING_MODEL,
     OPENAI_API_KEY,
@@ -33,7 +33,7 @@ class Embedder:
         Args:
             api_key: OpenAI API key. Defaults to environment variable.
             model: Embedding model name. Defaults to config.
-            cache_dir: Directory for embedding cache. Defaults to data/embeddings_cache.
+            cache_dir: Directory for embedding cache. Defaults to EMBEDDING_CACHE_DIR.
         """
         self.api_key = api_key or OPENAI_API_KEY
         if not self.api_key:
@@ -46,7 +46,7 @@ class Embedder:
         self._client = OpenAI(api_key=self.api_key)
 
         # Setup cache
-        self.cache_dir = cache_dir or (DATA_DIR / "embeddings_cache")
+        self.cache_dir = cache_dir or EMBEDDING_CACHE_DIR
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._cache: dict[str, list[float]] = {}
         self._load_cache()
